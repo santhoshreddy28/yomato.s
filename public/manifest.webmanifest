@@ -1,0 +1,13 @@
+{
+  "name": "Yomato",
+  "short_name": "Yomato",
+  "description": "A hostel meal, served with care.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0c241d",
+  "theme_color": "#0c241d",
+  "icons": [
+    {"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}

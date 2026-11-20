@@ -1,0 +1,459 @@
+import { state, STATUSES, AGENTS, money, cartEntries, cartCount, subtotal, uid, persist, maxQty, isAvailable, issueChallenge, submitGameResult, previewDiscount, placeOrder, updateOrder, saveItem, addItem, removeItem, updateShifts } from './store.js';
+import '@fontsource-variable/fraunces';
+import '@fontsource-variable/dm-sans';
+import { mountGame } from './game.js';
+import { SHIFTS, DEMO, shiftState, bookingShift, shiftRowState, hms } from './shifts.js';
+import { computeDiscount } from './discount.js';
+import { CLOUD, sb } from './supabase.js';
+import * as cloud from './cloud.js';
+import { staffUnlocked, staffLock, staffLogin } from './staff.js';
+
+const app = document.querySelector('#app');
+/** Which endpoint this page was opened on: '/' = student, '/admin/' = admin, '/delivery/' = delivery. */
+const PORTAL = ['admin', 'delivery'].includes(window.ANNAM_PORTAL) ? window.ANNAM_PORTAL : 'student';
+const ROOT = PORTAL === 'student' ? './' : '../';
+// Staff endpoints:  /1121/ (delivery)   /A1121/ (admin)
+const PORTAL_URL = { student: ROOT, admin: ROOT + 'A1121/', delivery: ROOT + '1121/' };
+const IMG_BASE = ROOT + 'images/foods/';
+const esc = (s = '') => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const ICON = {
+  download: '<path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/>', menu: '<path d="M4 6h16M4 12h16M4 18h10"/>', orders: '<path d="M7 4h10a1 1 0 0 1 1 1v15l-3-2-3 2-3-2-3 2V5a1 1 0 0 1 1-1z"/><path d="M9 9h6M9 13h4"/>',
+  user: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/>', cart: '<path d="M4 5h2l2 10h9l2-7H7"/><circle cx="10" cy="19" r="1.2"/><circle cx="17" cy="19" r="1.2"/>',
+  grid: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+  bike: '<circle cx="6" cy="16" r="3"/><circle cx="18" cy="16" r="3"/><path d="M6 16l4-8h5l3 8M10 8H8"/>', clock: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+  search: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-4-4"/>', back: '<path d="M15 5l-7 7 7 7"/>', close: '<path d="M6 6l12 12M18 6L6 18"/>', edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>', trash: '<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/>', image: '<rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/>', bolt: '<path d="M13 3L5 13h6l-1 8 8-10h-6z"/>', truck: '<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.6"/><circle cx="17" cy="17.5" r="1.6"/>',
+};
+const ico = n => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
+
+/* ---------------- navigation ---------------- */
+const NAV = {
+  student: [['menu', 'Today', 'menu'], ['orders', 'My orders', 'orders']],
+  admin: [['overview', 'Dashboard', 'grid'], ['orders', 'Orders', 'orders'], ['menu-admin', 'Menu', 'menu'], ['shifts-admin', 'Shifts', 'clock']],
+  delivery: [['active-deliveries', 'Active', 'bike'], ['delivery-history', 'Completed', 'clock']],
+};
+// The Student/Admin/Delivery preview switch exists only for local demo use (npm run dev, or add ?demo to the address). Students never see it.
+const HOME = { student: 'menu', admin: 'overview', delivery: 'active-deliveries' };
+state.role = PORTAL; state.page = HOME[PORTAL];   // each endpoint is locked to its own portal
+
+/* ---- direct APK download (file lives at downloads/yomato.apk; button only appears once the file exists) ---- */
+const APK_URL = ROOT + 'downloads/yomato.apk';
+const installed = matchMedia('(display-mode: standalone)').matches || !!window.Capacitor?.isNativePlatform?.() || /iPhone|iPad|iPod/i.test(navigator.userAgent);
+let apkInfo = null;
+const installButton = () => apkInfo ? `<a class="install-btn" href="${APK_URL}" download="Yomato.apk" data-apk aria-label="Download the Yomato Android app"><span class="ib-ico">${ico('download')}</span><span class="ib-txt"><b>Get the app</b><small>Android${apkInfo.size ? ' · ' + Math.round(apkInfo.size / 1048576 * 10) / 10 + ' MB' : ''}</small></span></a>` : '';
+if (!installed) fetch(APK_URL, { method: 'HEAD', cache: 'no-store' }).then(r => {
+  if (!r.ok || /text\/html/.test(r.headers.get('content-type') || '')) return;
+  apkInfo = { size: Number(r.headers.get('content-length')) || 0 };
+  if (document.querySelector('.topbar')) render();
+}).catch(() => {});
+document.addEventListener('click', e => { if (e.target.closest?.('[data-apk]')) showToast('Downloading Yomato… open the file when it finishes. If Android asks, allow “Install unknown apps”.'); });
+
+function brand() { return `<div class="brand" aria-label="Yomato"><span class="brand-word"><b class="bw-yo">yo</b><span class="bw-mato">mato</span></span></div>`; }
+function header() {
+  return `<header class="topbar">${brand()}
+  <nav class="top-links">${NAV[state.role].map(([id, label]) => `<button class="nav-btn ${state.page === id ? 'active' : ''}" data-action="nav" data-page="${id}">${label}</button>`).join('')}</nav>
+  <div class="top-actions">${installButton()}${!CLOUD && PORTAL !== 'student' ? `<span class="who">${PORTAL === 'admin' ? 'Admin' : 'Delivery'}</span><button class="signout" data-action="signout">Sign out</button>` : ''}${CLOUD && PORTAL !== 'student' ? `<span class="who">${esc(state.role === 'student' ? (state.profile.name || '').split(' ')[0] : state.role[0].toUpperCase() + state.role.slice(1))}</span><button class="signout" data-action="signout">Sign out</button>` : ''}
+</div></header>`;
+}
+function mobileNav() {
+  const items = NAV[state.role].map(([id, label, ic]) => `<button class="${state.page === id ? 'active' : ''}" data-action="nav" data-page="${id}">${ico(ic)}<span>${label}</span></button>`);
+  return `<nav class="mobile-nav" style="--n:${items.length}">${items.join('')}</nav>`;
+}
+function pageHead(title, sub = '', right = '') { return `<div class="page-head"><div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div>${right}</div>`; }
+const empty = msg => `<div class="empty-state">${msg}</div>`;
+
+/* ---------------- student ---------------- */
+const imgSrc = im => (/^(data:|https?:|blob:)/.test(im) ? im : IMG_BASE + im);
+function photo(item) {
+  return item.image
+    ? `<img src="${esc(imgSrc(item.image))}" alt="${esc(item.name)}" decoding="async" fetchpriority="high">`
+    : `<span class="ph">${esc(item.name[0])}</span>`;
+}
+const todayItem = () => state.menu.find(isAvailable);
+function counterHTML() {
+  const st = shiftState(), s = st.open || st.next;
+  return `<div class="status-card ${st.open ? 'live' : ''}"><div><span class="k">${st.open ? 'Reservations close in' : 'Reservations open in'}</span><b id="counter">${hms(st.open ? st.closesIn : st.opensIn)}</b></div>
+  <i class="sep"></i><div><span class="k">Delivered between</span><b class="t">${s.del}</b></div></div>`;
+}
+function orderBox(item) {
+  const qty = state.cart[item.id] || 1, can = !!bookingShift();
+  return `${counterHTML()}<div class="today-row"><div class="price-wrap"><span class="price">${money(item.price * qty)}</span><small>${qty > 1 ? qty + ' plates' : 'One plate'}</small></div><div class="qty-control"><button data-action="qty" data-id="${item.id}" data-delta="-1" aria-label="One less" ${qty <= 1 ? 'disabled' : ''}>−</button><span>${qty}</span><button data-action="qty" data-id="${item.id}" data-delta="1" aria-label="One more" ${qty >= maxQty(item) ? 'disabled' : ''}>+</button></div></div>
+  <button class="primary-btn full big" data-action="checkout" ${can ? '' : 'disabled'}>${can ? 'Reserve this meal' : 'Reservations closed'}</button>`;
+}
+// Live counter: ticks every second; the section re-renders only when a booking window opens or closes.
+let lastShiftKey = shiftState().key;
+setInterval(() => {
+  const el = document.getElementById('counter'); if (!el) return;
+  const st = shiftState();
+  if (st.key !== lastShiftKey) { lastShiftKey = st.key; refreshCart(); return; }
+  el.textContent = hms(st.open ? st.closesIn : st.opensIn);
+}, 1000);
+function menuPage() {
+  const item = todayItem();
+  if (!item) return `<section class="today closed"><div class="today-body"><p class="eyebrow"><span>Today</span></p><h1>Today’s meal will be announced soon.</h1><p class="desc">Thank you for your patience. Please check back shortly.</p></div></section>`;
+  state.cart = { [item.id]: Math.min(state.cart[item.id] || 1, maxQty(item)) || 1 };
+  const day = new Date().toLocaleDateString(undefined, { weekday: 'long' });
+  return `<section class="today"><div class="today-art"><div class="hero-pack is-photo">${photo(item)}</div></div>
+  <div class="today-body"><p class="eyebrow"><span>Today’s meal · ${day}</span></p><h1>${esc(item.name)}</h1><p class="desc">${esc(item.desc)}</p><div class="orn" aria-hidden="true"><i></i></div>
+  <div id="order-box">${orderBox(item)}</div></div></section>`;
+}
+function orderCard(o) {
+  return `<div class="order-card"><div class="order-head"><span class="order-id">Ref. ${esc(o.id)}</span><span class="status ${statusClass(o.status)}">${esc(o.status)}</span></div>
+  <div class="order-items">${o.items.map(i => `${i.qty} × ${esc(i.name)}`).join(' · ')}</div>
+  ${o.shift ? `<div class="order-shift">Delivery between <b>${esc(o.shift.delivery)}</b></div>` : ''}
+  <div class="order-meta"><span>Block ${esc(o.customer.block)} · Room ${esc(o.customer.room)}</span><span>${new Date(o.createdAt).toLocaleString()}</span>
+  <strong>${o.discount ? `<s>${money(o.subtotal)}</s> ` : ''}${money(o.total)}</strong></div></div>`;
+}
+const STEP = { Placed: 0, Accepted: 0, Preparing: 1, 'Ready for pickup': 1, 'Out for delivery': 2, Delivered: 3 };
+function tracker(o) {
+  if (o.status === 'Cancelled') return '';
+  const at = STEP[o.status] ?? 0;
+  return `<ol class="tracker">${['Received', 'Preparing', 'On the way', 'Delivered'].map((l, i) => `<li class="${i < at ? 'done' : i === at ? 'now' : ''}"><i></i><span>${l}</span></li>`).join('')}</ol>`;
+}
+function studentOrders() {
+  const mine = CLOUD ? state.orders : state.orders.filter(o => !state.profile.phone || o.customer.phone === state.profile.phone);
+  return `<div class="wrap">${pageHead('My orders', 'Your meals, from our kitchen to your door.')}${mine.length ? mine.map(o => orderCard(o).replace(/<\/div>$/, tracker(o) + '</div>')).join('') : empty('Your reservations will appear here.')}</div>`;
+}
+function fields(p) {
+  return `<div class="field full-width"><label>Full name</label><input name="name" value="${esc(p.name)}" placeholder="Your name" autocomplete="name" required></div>
+  <div class="field full-width"><label>Mobile number</label><input name="phone" value="${esc(p.phone)}" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="10-digit mobile number" autocomplete="tel" required></div>
+  <div class="field"><label>Block</label><select name="block"><option value="A" ${p.block === 'A' ? 'selected' : ''}>Block A</option><option value="B" ${p.block === 'B' ? 'selected' : ''}>Block B</option></select></div>
+  <div class="field"><label>Room number</label><input name="room" value="${esc(p.room)}" inputmode="numeric" pattern="[0-9]{3,4}" maxlength="4" placeholder="e.g. 1121" required></div>`;
+}
+/** Room 612 → floor 6, 1012 → floor 10, 1121 → floor 11. */
+const floorOf = room => Math.floor((parseInt(String(room).replace(/\D/g, ''), 10) || 0) / 100);
+const statusClass = s => ({ 'Delivered': 'delivered', 'Ready for pickup': 'ready', 'Out for delivery': 'ready', 'Preparing': 'preparing', 'Cancelled': 'cancelled' }[s] || '');
+
+/* ---------------- admin ---------------- */
+function adminOverview() {
+  const live = state.orders.filter(o => o.status !== 'Cancelled');
+  const active = live.filter(o => o.status !== 'Delivered'), done = live.filter(o => o.status === 'Delivered');
+  const revenue = done.reduce((a, o) => a + o.total, 0), avg = live.length ? live.reduce((a, o) => a + o.total, 0) / live.length : 0;
+  const tally = {}; live.forEach(o => o.items.forEach(i => tally[i.name] = (tally[i.name] || 0) + i.qty));
+  const top = Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 5), topMax = top[0]?.[1] || 1;
+  const blocks = ['A', 'B'].map(b => [b, live.filter(o => o.customer.block === b).length]);
+  return `${pageHead('Dashboard', 'Today’s hostel food operations')}
+  <div class="stat-grid">${[['Total orders', live.length], ['Active', active.length], ['Delivered', done.length], ['Delivered revenue', money(revenue)], ['Avg. order', money(avg)]].map(([l, v]) => `<div class="stat"><div class="label">${l}</div><div class="value">${v}</div></div>`).join('')}</div>
+  <div class="two-col"><div class="panel"><h3>Top items</h3>${top.length ? top.map(([n, q]) => `<div class="bar-row"><span>${esc(n)}</span><div class="bar"><i style="width:${q / topMax * 100}%"></i></div><b>${q}</b></div>`).join('') : '<p class="muted small">No sales yet.</p>'}</div>
+  <div class="panel"><h3>Orders by block</h3>${blocks.map(([b, n]) => `<div class="bar-row"><span>Block ${b}</span><div class="bar"><i style="width:${live.length ? n / live.length * 100 : 0}%"></i></div><b>${n}</b></div>`).join('')}</div></div>
+  <div class="section-heading"><h2>Recent orders</h2><button class="link-btn" data-action="nav" data-page="orders">Manage orders →</button></div>
+  ${state.orders.length ? state.orders.slice(0, 5).map(orderCard).join('') : empty('New student orders will appear here.')}`;
+}
+let adminFilter = 'all';
+function adminOrders() {
+  const list = state.orders.filter(o => adminFilter === 'all' || (adminFilter === 'active' ? !['Delivered', 'Cancelled'].includes(o.status) : o.status === 'Delivered'));
+  const tabs = [['all', 'All'], ['active', 'Active'], ['done', 'Delivered']];
+  return `${pageHead('Orders', 'Update status and assign delivery agents')}
+  <div class="tabs">${tabs.map(([v, t]) => `<button class="tab ${adminFilter === v ? 'active' : ''}" data-action="admin-filter" data-filter="${v}">${t}</button>`).join('')}</div>
+  ${list.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>Order</th><th>Student</th><th>Location</th><th>Items</th><th>Total</th><th>Status</th><th>Agent</th></tr></thead><tbody>${list.map(o => `<tr>
+    <td><strong>${esc(o.id)}</strong><br><span class="muted">${new Date(o.createdAt).toLocaleTimeString()}</span></td>
+    <td>${esc(o.customer.name)}<br><span class="muted">${esc(o.customer.phone)}</span></td>
+    <td>${esc(o.customer.block)} · ${esc(o.customer.floor)}F · ${esc(o.customer.room)}${o.shift ? `<br><span class="muted">${esc(o.shift.label)}</span>` : ''}</td>
+    <td>${o.items.map(i => `${i.qty}× ${esc(i.name)}`).join('<br>')}</td>
+    <td>${money(o.total)}${o.discount ? `<br><span class="muted">−${money(o.discount)}</span>` : ''}</td>
+    <td><select class="select-small" data-order-status="${o.id}" ${o.status === 'Cancelled' ? 'disabled' : ''}>${STATUSES.map(s => `<option ${o.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></td>
+    <td><select class="select-small" data-agent="${o.id}">${AGENTS.map(a => `<option ${o.agent === a ? 'selected' : ''}>${a}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>` : empty('No orders to show.')}`;
+}
+function adminMenu() {
+  return `${pageHead('Menu', 'Edit photos, prices, stock — and choose the one meal served today', `<button class="primary-btn" data-action="add-food">+ Add food</button>`)}
+  <div class="table-wrap"><table class="data-table menu-table"><thead><tr><th>Dish</th><th>Price</th><th>Stock</th><th>Serve today</th><th></th></tr></thead><tbody>${state.menu.map(item => `<tr>
+    <td><div class="dish-cell"><button class="thumb thumb-btn" data-action="edit-food" data-id="${item.id}" aria-label="Change photo of ${esc(item.name)}" title="Change photo">${photo(item)}<span class="thumb-cam">${ico('image')}</span></button><div><strong>${esc(item.name)}</strong><br><span class="muted">${esc(item.desc)}</span></div></div></td>
+    <td data-label="Price"><label class="inline-input">₹<input aria-label="Price for ${esc(item.name)}" type="number" min="1" value="${item.price}" data-price="${item.id}"></label></td>
+    <td data-label="Stock"><input class="stock-input" aria-label="Stock for ${esc(item.name)}" type="number" min="0" placeholder="∞" value="${item.stock ?? ''}" data-stock="${item.id}"></td>
+    <td data-label="Today"><button class="toggle ${item.available ? 'on' : ''}" data-action="toggle-food" data-id="${item.id}" aria-label="Toggle ${esc(item.name)}" aria-pressed="${item.available}"></button></td>
+    <td><div class="row-actions"><button class="icon-btn" data-action="edit-food" data-id="${item.id}" aria-label="Edit ${esc(item.name)}" title="Edit">${ico('edit')}</button><button class="icon-btn danger" data-action="delete-food" data-id="${item.id}" aria-label="Delete ${esc(item.name)}" title="Delete">${ico('trash')}</button></div></td></tr>`).join('')}</tbody></table></div>
+  <p class="footer-note">Tap a photo or the pencil to edit name, description, photo, price and stock. Leave stock empty for unlimited. Stock reduces automatically when orders are placed and returns if an order is cancelled.</p>`;
+}
+const hhmm = ([h, m]) => String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+function adminShifts() {
+  const f = (i, k, label, v) => `<div class="field"><label>${label}</label><input type="time" name="${k}${i}" value="${hhmm(v)}" required></div>`;
+  return `${pageHead('Shifts', 'Booking and delivery times shown to students')}
+  <form id="shifts-form" class="shift-admin">${SHIFTS.map((s, i) => `<div class="panel"><h3>${s.label}</h3><div class="form-grid">
+    ${f(i, 'open', 'Booking opens', s.open)}${f(i, 'close', 'Booking closes', s.close)}${f(i, 'ds', 'Delivery starts', s.dStart)}${f(i, 'de', 'Delivery ends', s.dEnd)}</div></div>`).join('')}
+  <div><button class="primary-btn" type="submit">Save times</button></div></form>
+  <p class="footer-note">Times use the device clock (IST on the hostel's devices). Booking closes automatically when a window ends.</p>`;
+}
+
+/* photo upload: resized in the browser so it stays small and sharp */
+let pendingImage, pendingBlob;   // pendingImage: undefined = unchanged, null = removed, string = new data URL (preview); pendingBlob = file to upload in cloud mode
+function readPhoto(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file), im = new Image();
+    im.onload = () => {
+      // centre-crop to portrait 4:5 (the student frame), max 800×1000 — so a photo always fills the frame, with no gaps
+      const R = 0.8; let sw = im.width, sh = im.height;
+      if (sw / sh > R) sw = Math.round(sh * R); else sh = Math.round(sw / R);
+      const k = Math.min(1, 800 / sw), c = document.createElement('canvas');
+      c.width = Math.round(sw * k); c.height = Math.round(sh * k);
+      c.getContext('2d').drawImage(im, (im.width - sw) / 2, (im.height - sh) / 2, sw, sh, 0, 0, c.width, c.height); URL.revokeObjectURL(url); c.toBlob(blob => res({ url: c.toDataURL('image/jpeg', 0.86), blob }), 'image/jpeg', 0.86);
+    };
+    im.onerror = () => { URL.revokeObjectURL(url); rej(new Error('bad image')); }; im.src = url;
+  });
+}
+function foodModal(id) {
+  const item = id ? state.menu.find(x => x.id === id) : null; pendingImage = undefined; pendingBlob = undefined;
+  const preview = item?.image ? `<img src="${esc(imgSrc(item.image))}" alt="">` : `<span class="ph">${esc((item?.name || '+')[0])}</span>`;
+  openModal(`${modalHead(item ? 'Edit food item' : 'Add food item')}<form id="food-form" class="form-grid" data-id="${item ? item.id : ''}">
+    <div class="field full-width"><label>Photo</label><div class="photo-edit"><div class="photo-preview" id="photo-preview">${preview}</div>
+      <div class="photo-btns"><span class="muted small">Cropped to a portrait frame, so it always fills the picture.</span><label class="secondary-btn file-btn">${ico('image')} ${item?.image ? 'Change photo' : 'Upload photo'}<input type="file" accept="image/*" id="photo-input" hidden></label>${item?.image ? '<button type="button" class="link-btn" data-action="remove-photo">Remove photo</button>' : ''}</div></div></div>
+    <div class="field full-width"><label>Name</label><input name="name" required placeholder="e.g. Lemon Rice" value="${esc(item?.name || '')}"></div>
+    <div class="field full-width"><label>Description</label><input name="desc" placeholder="Short description" value="${esc(item?.desc || '')}"></div>
+    <div class="field"><label>Price (₹)</label><input name="price" type="number" min="1" required value="${item ? item.price : ''}"></div>
+    <div class="field"><label>Stock (optional)</label><input name="stock" type="number" min="0" placeholder="Unlimited" value="${item?.stock ?? ''}"></div>
+    <div class="field full-width"><button class="primary-btn full" type="submit">${item ? 'Save changes' : 'Add to menu'}</button></div></form>`, 'food');
+}
+
+/* ---------------- delivery ---------------- */
+const roomNum = r => parseInt(String(r).replace(/\D/g, ''), 10) || 0;
+function deliveryCard(o, compact = false) {
+  const go = o.status === 'Ready for pickup' || o.status === 'Out for delivery';   // contact shown only once the order is in a delivery agent's hands
+  const action = o.status === 'Ready for pickup' ? `<button class="primary-btn full" data-action="pickup" data-id="${o.id}">Picked up</button>`
+    : o.status === 'Out for delivery' ? `<button class="primary-btn full" data-action="deliver" data-id="${o.id}">Mark delivered</button>`
+    : o.status === 'Delivered' ? '' : `<div class="muted small center">Kitchen: ${esc(o.status)}</div>`;
+  return `<article class="delivery-card ${go ? '' : 'waiting'}"><div class="d-top"><div class="d-room">${compact ? 'Room' : 'Floor ' + esc(o.customer.floor) + ' · Room'} ${esc(o.customer.room)}</div><span class="status ${statusClass(o.status)}">${esc(o.status)}</span></div>
+  <div class="d-items">${o.items.map(i => `${i.qty} × ${esc(i.name)}`).join(' · ')}</div>
+  <div class="d-meta"><span>${o.shift ? esc(o.shift.label) + ' · ' : ''}${esc(o.customer.name)} · ${esc(o.id)}</span><b>${money(o.total)}</b></div>
+  ${go ? `<a class="call-link" href="tel:${esc(o.customer.phone)}">Call ${esc(o.customer.phone)}</a>` : ''}${action}</article>`;
+}
+function deliveryPage() {
+  if (state.page === 'delivery-history') {
+    const done = state.orders.filter(o => o.status === 'Delivered');
+    return `${pageHead('Completed', 'Recently delivered orders')}${done.length ? done.map(o => deliveryCard(o)).join('') : empty('Completed deliveries will appear here.')}`;
+  }
+  const active = state.orders.filter(o => !['Delivered', 'Cancelled'].includes(o.status));
+  const floorN = o => Number(o.customer.floor) || floorOf(o.customer.room);
+  const floors = [...new Set(active.map(floorN))].sort((x, y) => y - x);          // floors: highest first
+  const col = (b, list) => `<div class="block-col"><h4>Block ${b}<span>${list.length}</span></h4>${list.length
+    ? list.sort((x, y) => roomNum(y.customer.room) - roomNum(x.customer.room)).map(o => deliveryCard(o, true)).join('')   // rooms: highest first
+    : '<div class="none">No orders</div>'}</div>`;
+  const sections = floors.map(f => { const here = active.filter(o => floorN(o) === f); return `<section class="floor-group"><div class="floor-head"><h3>Floor ${f}</h3><span>${here.length} ${here.length === 1 ? 'order' : 'orders'}</span></div><div class="block-cols">${['A', 'B'].map(b => col(b, here.filter(o => o.customer.block === b))).join('')}</div></section>`; }).join('');
+  return `${pageHead('Deliveries', 'Top floor first · Block A left, Block B right · highest room first')}${sections || empty('No active deliveries right now.')}`;
+}
+
+/* ---------------- shell ---------------- */
+function pageContent() {
+  if (state.role === 'student') return state.page === 'orders' ? studentOrders() : state.page === 'profile' ? profilePage() : menuPage();
+  if (state.role === 'admin') return state.page === 'orders' ? adminOrders() : state.page === 'menu-admin' ? adminMenu() : state.page === 'shifts-admin' ? adminShifts() : adminOverview();
+  return deliveryPage();
+}
+function render() {
+  const hero = '';
+  app.innerHTML = `<div class="app-shell role-${state.role}${hero}">${header()}<main class="page" id="page">${pageContent()}</main>${mobileNav()}</div>`;
+  window.scrollTo(0, 0);
+}
+function refreshCart() {
+  const item = todayItem(), box = document.getElementById('order-box');
+  if (item && box) box.innerHTML = orderBox(item);
+}
+function showToast(msg) {
+  document.querySelector('.toast')?.remove();
+  const el = Object.assign(document.createElement('div'), { className: 'toast', textContent: msg, role: 'status' });
+  document.body.append(el); setTimeout(() => el.remove(), 2400);
+}
+function openModal(content, kind = '') {
+  document.querySelector('.modal-backdrop')?.remove();
+  const back = document.createElement('div'); back.className = 'modal-backdrop';
+  back.innerHTML = `<section class="modal" data-kind="${kind}" role="dialog" aria-modal="true">${content}</section>`;
+  back.addEventListener('mousedown', e => { if (e.target === back) closeModal(); });
+  document.body.append(back);
+}
+const closeModal = () => document.querySelector('.modal-backdrop')?.remove();
+const modalHead = t => `<div class="modal-head"><h2>${t}</h2><button class="close-btn" data-action="close-modal" aria-label="Close">${ico('close')}</button></div>`;
+
+/* ---------------- cart & checkout ---------------- */
+function checkoutModal() {
+  if (!state.checkoutKey) state.checkoutKey = uid();   // one key per order attempt => submit can never create two orders
+  openModal(`${modalHead('Where shall we bring it?')}<form id="checkout-form" class="form-grid">${fields(state.profile)}
+  <div class="field full-width"><button class="primary-btn full" type="submit">Play for a surprise discount</button><button class="secondary-btn full" type="button" data-action="skip-game">Skip and continue</button></div></form>`, 'checkout');
+}
+function readCheckout() {
+  const d = Object.fromEntries(new FormData(document.querySelector('#checkout-form')).entries());
+  if (!/^[0-9]{10}$/.test(d.phone || '')) { showToast('Enter a valid 10-digit mobile number'); return null; }
+  if (!/^[0-9]{3,4}$/.test(d.room || '')) { showToast('Enter your room number, e.g. 612 or 1121'); return null; }
+  d.floor = String(floorOf(d.room)); state.checkout = d; state.profile = d; persist(); return d;
+}
+const discountNow = () => CLOUD
+  ? (state.cloudGame ? computeDiscount({ packs: cartCount(), subtotal: subtotal(), hit: state.cloudGame.hit, shots: state.cloudGame.arrows }) : 0)
+  : (state.challengeId ? previewDiscount(state.challengeId) : 0);
+async function launchGame() {
+  closeModal(); state.cloudGame = null;
+  if (CLOUD) { try { state.challengeId = await cloud.startGame(); } catch (e) { showToast(e.message); reviewModal(); return; } } else issueChallenge();
+  const layer = document.createElement('div'); layer.className = 'game-screen';
+  layer.innerHTML = `<div class="game-frame"><div class="game-stage"></div><button class="game-back" aria-label="Exit game">${ico('back')}</button></div>`;
+  document.body.append(layer);
+  const frame = layer.querySelector('.game-frame');
+  const leave = () => { game.destroy(); layer.remove(); };
+  const game = mountGame(layer.querySelector('.game-stage'), async result => {
+    let earned;
+    if (CLOUD) { try { const r = await cloud.submitGame(state.challengeId, result); state.cloudGame = r.hit == null ? null : { hit: r.hit, arrows: r.arrows }; } catch { state.cloudGame = null; } earned = discountNow(); }
+    else earned = submitGameResult(state.challengeId, result);
+    frame.querySelector('.game-back').remove();
+    frame.insertAdjacentHTML('beforeend', `<div class="game-result"><div><p class="r-title">${result.hit ? 'Well aimed' : 'Thank you for playing'}</p><div class="r-amount">${money(earned)} off</div><p class="r-sub">Applied to your reservation</p><button class="primary-btn full" id="apply-reward">Continue</button></div></div>`);
+    frame.querySelector('#apply-reward').addEventListener('click', () => { leave(); reviewModal(); });
+  });
+  layer.querySelector('.game-back').addEventListener('click', () => { leave(); state.challengeId = null; state.cloudGame = null; reviewModal(); });
+}
+function reviewModal() {
+  const total = subtotal(), discount = discountNow();
+  openModal(`${modalHead('Your reservation')}<div class="review-lines">${cartEntries().map(({ item, qty }) => `<div class="cart-row"><strong>${qty} × ${esc(item.name)}</strong><b>${money(qty * item.price)}</b></div>`).join('')}</div>
+  <div class="summary-line"><span>Subtotal</span><strong>${money(total)}</strong></div>
+  <div class="summary-line"><span>Discount</span><strong class="accent">−${money(discount)}</strong></div>
+  <div class="summary-line total"><span>Total</span><strong>${money(total - discount)}</strong></div>
+  <button class="primary-btn full" id="place-order" data-action="place-order" data-label="Confirm reservation · ${money(total - discount)}">Confirm reservation · ${money(total - discount)}</button><p class="footer-note">Payment is settled directly with the hostel kitchen.</p>`, 'review');
+}
+async function submitOrder(btn) {
+  if (state.placing) return;
+  state.placing = true; btn.disabled = true; btn.textContent = 'Reserving…';
+  if (CLOUD) {   // the server recomputes prices, stock, shift and discount; a retry with the same key returns the same order
+    const label = btn.dataset.label;
+    try {
+      await cloud.placeOrder({ key: state.checkoutKey, items: cartEntries().map(({ item, qty }) => ({ id: item.id, qty })), customer: state.checkout, challengeId: state.cloudGame ? state.challengeId : null });
+      state.cart = {}; state.challengeId = null; state.cloudGame = null; state.checkoutKey = null; state.profile = { ...state.profile, ...state.checkout }; persist();
+      lastSig = await cloud.refreshData(); state.placing = false; closeModal(); state.page = 'orders'; render(); showToast('Your meal is reserved. Thank you.');
+    } catch (e) { state.placing = false; btn.disabled = false; btn.textContent = label; showToast(e.message); }
+    return;
+  }
+  const r = placeOrder({ key: state.checkoutKey, customer: { ...state.checkout }, challengeId: state.challengeId });
+  state.placing = false;
+  if (!r.ok) { btn.disabled = false; showToast(r.error); closeModal(); render(); return; }
+  closeModal(); state.role = 'student'; state.page = 'orders'; render(); showToast(r.duplicate ? 'Already reserved' : 'Your meal is reserved. Thank you.');
+}
+
+/* ---------------- events ---------------- */
+function changeQty(id, d) {
+  const item = state.menu.find(x => x.id === id); if (!item) return;
+  state.cart = { [id]: Math.min(maxQty(item), Math.max(1, (state.cart[id] || 1) + d)) };
+  persist(); refreshCart();
+}
+/** Runs a server action, then reloads data and redraws. Errors are shown and the screen is re-synced from the server. */
+async function run(fn, okMsg) {
+  try { await fn(); lastSig = await cloud.refreshData(); render(); if (okMsg) showToast(okMsg); }
+  catch (e) { showToast(e.message || 'Something went wrong'); try { lastSig = await cloud.refreshData(); } catch {} render(); }
+}
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-action]'); if (!b) return;
+  const id = b.dataset.id;
+  switch (b.dataset.action) {
+    case 'nav': state.page = b.dataset.page; state.query = ''; render(); break;
+    case 'qty': changeQty(id, Number(b.dataset.delta)); break;
+    case 'close-modal': closeModal(); break;
+    case 'checkout': if (!bookingShift()) { showToast('Booking is closed right now'); refreshCart(); break; } closeModal(); checkoutModal(); break;
+    case 'skip-game': if (readCheckout()) { state.challengeId = null; state.cloudGame = null; reviewModal(); } break;
+    case 'place-order': submitOrder(b); break;
+    case 'add-food': foodModal(); break;
+    case 'edit-food': foodModal(id); break;
+    case 'remove-photo': pendingImage = null; document.getElementById('photo-preview').innerHTML = '<span class="ph">–</span>'; b.remove(); break;
+    case 'delete-food': { const it = state.menu.find(x => x.id === id); if (it && confirm(`Delete “${it.name}” from the menu? Past orders keep their record.`)) { if (CLOUD) await run(() => cloud.deleteMenuItem(id), 'Dish deleted'); else { removeItem(id); render(); showToast('Dish deleted'); } } break; }
+    case 'toggle-food': {
+      const f = state.menu.find(x => x.id === id); if (!f) break;
+      const on = !f.available; state.cart = {};
+      if (CLOUD) { await run(() => cloud.setTodayMeal(on ? id : null), on ? `${f.name} is today’s meal` : 'Nothing served today'); break; }
+      state.menu.forEach(x => x.available = false); f.available = on; persist(); render(); showToast(on ? `${f.name} is today’s meal` : 'Nothing served today'); break;
+    }
+    case 'admin-filter': adminFilter = b.dataset.filter; render(); break;
+    case 'pickup': if (CLOUD) await run(() => cloud.setStatus(id, 'Out for delivery')); else { updateOrder(id, { status: 'Out for delivery' }); render(); } break;
+    case 'deliver': if (CLOUD) await run(() => cloud.setStatus(id, 'Delivered'), 'Marked delivered'); else { updateOrder(id, { status: 'Delivered' }); render(); showToast('Marked delivered'); } break;
+    case 'signout': if (CLOUD) await cloud.signOut(); else { staffLock(PORTAL); authMsg = ''; authScreen(); } break;
+    case 'auth-mode': authMode = authMode === 'signin' ? 'signup' : 'signin'; authMsg = ''; authScreen(); break;
+  }
+});
+// A missing/broken photo must never show a different food: fall back to a neutral tile.
+document.addEventListener('error', e => { const img = e.target; if (img.tagName === 'IMG' && img.closest('.hero-pack,.thumb')) { img.replaceWith(Object.assign(document.createElement('span'), { className: 'ph', textContent: (img.alt || '?')[0] })); } }, true);
+
+document.addEventListener('change', e => {   // the photo picker lives inside a modal (outside #app)
+  const t = e.target; if (t.id !== 'photo-input') return;
+  const f = t.files[0]; if (!f) return;
+  readPhoto(f).then(({ url, blob }) => { pendingImage = url; pendingBlob = blob; document.getElementById('photo-preview').innerHTML = `<img src="${url}" alt="">`; }).catch(() => showToast('Could not read that image'));
+});
+app.addEventListener('change', async e => {
+  const t = e.target;
+  if (t.dataset.orderStatus) { if (CLOUD) await run(() => cloud.setStatus(t.dataset.orderStatus, t.value)); else { updateOrder(t.dataset.orderStatus, { status: t.value }); render(); } }
+  if (t.dataset.agent) { if (CLOUD) await run(() => cloud.setAgent(t.dataset.agent, t.value), 'Agent assigned'); else { updateOrder(t.dataset.agent, { agent: t.value }); showToast('Agent assigned'); } }
+  if (t.dataset.price) { const item = state.menu.find(x => x.id === t.dataset.price), v = Number(t.value); if (item && v > 0) { if (CLOUD) await run(() => cloud.patchItem(item.id, { price: v }), 'Price updated'); else { item.price = v; persist(); showToast('Price updated'); } } else render(); }
+  if (t.dataset.stock !== undefined && CLOUD) { const item = state.menu.find(x => x.id === t.dataset.stock); if (item) await run(() => cloud.patchItem(item.id, { stock: t.value === '' ? null : Math.max(0, Math.floor(Number(t.value))) }), 'Stock updated'); return; }
+  if (t.dataset.stock !== undefined) { const item = state.menu.find(x => x.id === t.dataset.stock); if (item) { item.stock = t.value === '' ? null : Math.max(0, Math.floor(Number(t.value))); if (item.stock != null && state.cart[item.id] > item.stock) { item.stock ? state.cart[item.id] = item.stock : delete state.cart[item.id]; } persist(); render(); showToast('Stock updated'); } }
+});
+document.addEventListener('submit', e => {
+  e.preventDefault(); const f = e.target, d = Object.fromEntries(new FormData(f).entries());
+  if (f.id === 'checkout-form') { if (readCheckout()) launchGame(); }
+  else if (f.id === 'food-form') {
+    const data = { name: d.name.trim(), desc: d.desc.trim() || 'Freshly prepared', price: Math.max(1, Math.round(Number(d.price))), stock: d.stock === '' ? null : Math.max(0, Math.floor(Number(d.stock))) };
+    const editing = f.dataset.id, photo = pendingImage === undefined ? undefined : (pendingImage === null ? null : pendingBlob);
+    if (CLOUD) { closeModal(); showToast('Saving…'); run(() => editing ? cloud.saveMenuItem(editing, data, photo) : cloud.addMenuItem(data, photo), editing ? 'Saved' : 'Added — switch it on to serve it today'); return; }
+    if (editing) { if (pendingImage !== undefined) data.image = pendingImage; saveItem(editing, data); closeModal(); render(); showToast('Saved'); }
+    else { addItem({ ...data, image: pendingImage || null }); closeModal(); render(); showToast('Added — switch it on to serve it today'); }
+  }
+  else if (f.id === 'shifts-form') {
+    const tm = v => v.split(':').map(Number);
+    const list = SHIFTS.map((_, i) => ({ open: tm(d['open' + i]), close: tm(d['close' + i]), dStart: tm(d['ds' + i]), dEnd: tm(d['de' + i]) }));
+    const mins = ([h, mm]) => h * 60 + mm;
+    if (list.some(x => mins(x.close) <= mins(x.open) || mins(x.dEnd) <= mins(x.dStart))) { showToast('End time must be after start time'); return; }
+    if (mins(list[1].open) < mins(list[0].close)) { showToast('Shift 2 must open after Shift 1 closes'); return; }
+    if (CLOUD) { run(() => cloud.saveShifts(list), 'Shift times saved'); return; }
+    updateShifts(list); render(); showToast('Shift times saved');
+  }
+  else if (f.id === 'auth-form') { doAuth(d, f.querySelector('button[type=submit]')); }
+});
+
+/* ---------------- cloud: sign-in, startup, live refresh ---------------- */
+let authMode = 'signin', authMsg = '', lastSig = '', pollTimer = 0;
+function authScreen() {
+  const staff = PORTAL !== 'student', su = !staff && authMode === 'signup';
+  app.innerHTML = `<div class="auth"><div class="auth-card">${brand()}
+    <h1>${su ? 'Create your account' : staff ? (PORTAL === 'admin' ? 'Admin sign in' : 'Delivery sign in') : 'Welcome'}</h1><p class="auth-sub">${su ? 'A few details so we can bring your meal to the right door.' : staff ? 'Staff only. Enter your ID and password.' : 'Please sign in to reserve today’s meal.'}</p>
+    <form id="auth-form" class="form-grid">
+      ${su ? `<div class="field full-width"><label>Full name</label><input name="name" autocomplete="name" required></div>
+      <div class="field full-width"><label>Mobile number</label><input name="phone" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="10-digit mobile number" autocomplete="tel" required></div>
+      <div class="field"><label>Block</label><select name="block"><option value="A">Block A</option><option value="B">Block B</option></select></div>
+      <div class="field"><label>Room number</label><input name="room" inputmode="numeric" pattern="[0-9]{3,4}" maxlength="4" placeholder="e.g. 1121" required></div>` : ''}
+      ${!CLOUD && staff ? `<div class="field full-width"><label>${PORTAL === 'admin' ? 'Admin ID' : 'Delivery ID'}</label><input name="email" autocomplete="username" autocapitalize="characters" required></div>` : `<div class="field full-width"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>`}
+      <div class="field full-width"><label>Password</label><input name="password" type="password" ${!CLOUD && staff ? '' : 'minlength="6" '}autocomplete="${su ? 'new-password' : 'current-password'}" required></div>
+      ${authMsg ? `<p class="auth-msg full-width" role="status">${esc(authMsg)}</p>` : ''}
+      <div class="field full-width"><button class="primary-btn full big" type="submit">${su ? 'Create account' : 'Sign in'}</button></div>
+    </form>
+    ${staff ? '' : `<p class="auth-switch">${su ? 'Already have an account?' : 'New here?'} <button class="link-btn" data-action="auth-mode">${su ? 'Sign in' : 'Create an account'}</button></p>`}</div></div>`;
+}
+async function doAuth(d, btn) {
+  btn.disabled = true; authMsg = '';
+  try {
+    if (authMode === 'signup' && PORTAL === 'student') {
+      const signedIn = await cloud.signUp({ email: d.email.trim(), password: d.password, name: d.name.trim(), phone: d.phone, block: d.block, room: d.room });
+      if (!signedIn) { authMode = 'signin'; authMsg = 'Account created. Check your email to confirm it, then sign in.'; authScreen(); return; }
+    } else if (!CLOUD) { staffLogin(PORTAL, d.email, d.password); render(); return; }
+    else await cloud.signIn(d.email.trim(), d.password);
+    await enterApp();
+  } catch (e) { authMsg = e.message; authScreen(); }
+}
+async function enterApp() {
+  const p = await cloud.loadProfile(); if (!p) { authScreen(); return; }
+  if (p.role !== PORTAL) {   // wrong door: show where this account belongs instead of the wrong portal
+    const home = PORTAL_URL[p.role] || PORTAL_URL.student;
+    app.innerHTML = `<div class="auth"><div class="auth-card">${brand()}<h1>Wrong portal</h1><p class="auth-sub">This account is a ${esc(p.role)} account and can't open the ${PORTAL} portal.</p><a class="primary-btn full big" href="${home}" style="text-align:center;display:block;text-decoration:none">Go to the ${esc(p.role)} portal</a><button class="secondary-btn full" data-action="signout">Sign out</button></div></div>`;
+    return;
+  }
+  state.profile = { name: p.name, phone: p.phone, block: p.block || 'A', floor: p.floor, room: p.room, email: p.email };
+  state.role = PORTAL; state.page = HOME[PORTAL];
+  lastSig = await cloud.refreshData();
+  render();
+  clearInterval(pollTimer); pollTimer = setInterval(poll, 10000);
+}
+async function poll() {
+  if (document.hidden || !sb) return;
+  try {
+    const sig = await cloud.refreshData(); if (sig === lastSig) return;
+    const busy = document.querySelector('.modal-backdrop,.game-screen') || document.activeElement?.closest?.('#page input,#page select');
+    if (!busy) { lastSig = sig; render(); }   // if the person is mid-edit, redraw on the next poll instead
+  } catch { /* offline: try again next time */ }
+}
+if (CLOUD) {
+  app.innerHTML = '<div class="auth"><div class="auth-card"><div class="auth-sub">Loading…</div></div></div>';
+  sb.auth.onAuthStateChange(ev => { if (ev === 'SIGNED_OUT') { clearInterval(pollTimer); state.cart = {}; authMode = 'signin'; authMsg = ''; if (PORTAL === 'student') location.reload(); else authScreen(); } });
+  (async () => {
+    let s = await cloud.getSession();
+    if (PORTAL === 'student') { if (!s) await cloud.signInGuest(); return enterApp(); }   // students: no login screen
+    if (s?.user?.is_anonymous) { await sb.auth.signOut({ scope: 'local' }); s = null; }  // a student's guest session must not block the staff sign-in
+    return s ? enterApp() : authScreen();
+  })().catch(e => { authMsg = PORTAL === 'student' ? 'Could not start. Check your connection, and make sure Anonymous sign-ins is switched on in Supabase (Authentication → Sign In / Providers).' : 'Could not reach the server. Check your connection and refresh.'; authScreen(); });
+} else if (PORTAL !== 'student' && !staffUnlocked(PORTAL)) authScreen();
+else render();
+if (import.meta.env.PROD && 'serviceWorker' in navigator && location.protocol.startsWith('http')) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
