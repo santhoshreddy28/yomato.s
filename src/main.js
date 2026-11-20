@@ -93,7 +93,7 @@ function menuPage() {
   if (!item) return `<section class="today closed"><div class="today-body"><p class="eyebrow"><span>Today</span></p><h1>Today’s meal will be announced soon.</h1><p class="desc">Thank you for your patience. Please check back shortly.</p></div></section>`;
   state.cart = { [item.id]: Math.min(state.cart[item.id] || 1, maxQty(item)) || 1 };
   const day = new Date().toLocaleDateString(undefined, { weekday: 'long' });
-  return `<section class="today"><div class="today-art"><div class="hero-pack is-photo">${photo(item)}</div></div>
+  return `<section class="today"><div class="today-art"><div class="arch"><div class="arch-in">${photo(item)}</div></div></div>
   <div class="today-body"><p class="eyebrow"><span>Today’s meal · ${day}</span></p><h1>${esc(item.name)}</h1><p class="desc">${esc(item.desc)}</p><div class="orn" aria-hidden="true"><i></i></div>
   <div id="order-box">${orderBox(item)}</div></div></section>`;
 }
@@ -358,7 +358,7 @@ document.addEventListener('click', async e => {
   }
 });
 // A missing/broken photo must never show a different food: fall back to a neutral tile.
-document.addEventListener('error', e => { const img = e.target; if (img.tagName === 'IMG' && img.closest('.hero-pack,.thumb')) { img.replaceWith(Object.assign(document.createElement('span'), { className: 'ph', textContent: (img.alt || '?')[0] })); } }, true);
+document.addEventListener('error', e => { const img = e.target; if (img.tagName === 'IMG' && img.closest('.arch,.hero-pack,.thumb')) { img.replaceWith(Object.assign(document.createElement('span'), { className: 'ph', textContent: (img.alt || '?')[0] })); } }, true);
 
 document.addEventListener('change', e => {   // the photo picker lives inside a modal (outside #app)
   const t = e.target; if (t.id !== 'photo-input') return;
