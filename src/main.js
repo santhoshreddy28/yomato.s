@@ -188,7 +188,7 @@ function adminGame() {
       <div class="field"><label>Minimum discount (₹)</label><input name="minDiscount" type="number" min="0" step="1" value="${c.minDiscount}" required></div>
       <div class="field"><label>Maximum discount (₹)</label><input name="maxDiscount" type="number" min="0" step="1" value="${c.maxDiscount}" required></div>
       <div class="field"><label>Target speed (1–3.5×)</label><input name="targetSpeed" type="number" min="1" max="3.5" step="0.1" value="${c.targetSpeed}" required></div>
-    </div><p class="footer-note">The closest shot sets the discount, rounded to the nearest rupee. It cannot exceed the order total.</p><button class="primary-btn" type="submit">Save game settings</button></form>
+    </div><p class="footer-note">The reward uses the average score from all four arrows, rounded to the nearest rupee. Unused arrows count as zero, and the discount cannot exceed the order total.</p><button class="primary-btn" type="submit">Save game settings</button></form>
     <form id="game-replay-form" class="panel game-admin-card"><div class="game-section-heading"><span>03</span><div><h3>Replay for one student</h3><p>Give one student another chance this shift.</p></div></div><div class="field"><label>Registered mobile number</label><input name="phone" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="10-digit mobile number" required></div><button class="secondary-btn" type="submit">Allow this student to play again</button></form>
     <form id="game-replay-all-form" class="panel game-admin-card"><div class="game-section-heading"><span>04</span><div><h3>Replay for all played students</h3><p>Give each student who used a game chance this shift one extra chance.</p></div></div><button class="secondary-btn" type="submit">Give all played students one more chance</button></form>
   </div>`;
@@ -319,7 +319,7 @@ async function launchGame() {
     if (CLOUD) { try { const r = await cloud.submitGame(state.challengeId, result); state.cloudGame = r.hit == null ? null : { hit: r.hit, bullseye: r.bullseye, accuracy: r.accuracy, arrows: r.arrows, minDiscount: state.challengeMinDiscount ?? state.gameConfig.minDiscount, maxDiscount: state.challengeMaxDiscount ?? state.gameConfig.maxDiscount }; } catch { state.cloudGame = null; } earned = discountNow(); }
     else earned = submitGameResult(state.challengeId, result);
     frame.querySelector('.game-back').remove();
-    frame.insertAdjacentHTML('beforeend', `<div class="game-result"><div><p class="r-title">${result.hit ? 'Well aimed' : 'Thank you for playing'}</p><div class="r-amount">${money(earned)} off</div><p class="r-sub">Applied to your reservation</p><button class="primary-btn full" id="apply-reward">Continue</button></div></div>`);
+    frame.insertAdjacentHTML('beforeend', `<div class="game-result"><div><p class="r-title">${result.hit ? 'Well aimed' : 'Thank you for playing'}</p><div class="r-amount">${money(earned)} off</div><p class="r-sub">Four-arrow average: ${Math.round((state.cloudGame?.accuracy ?? result.accuracy) * 100)}% · Applied to your reservation</p><button class="primary-btn full" id="apply-reward">Continue</button></div></div>`);
     frame.querySelector('#apply-reward').addEventListener('click', () => { leave(); reviewModal(); });
   }, { targetSpeed: state.gameConfig.targetSpeed });
   layer.querySelector('.game-back').addEventListener('click', () => { leave(); state.challengeId = null; state.cloudGame = null; reviewModal(); });
@@ -334,7 +334,7 @@ function launchTrialGame() {
   const game = mountGame(layer.querySelector('.game-stage'), result => {
     const amount = computeDiscount({ subtotal: Number.MAX_SAFE_INTEGER, accuracy: result.accuracy, minDiscount: config.minDiscount, maxDiscount: config.maxDiscount });
     frame.querySelector('.game-back').remove();
-    frame.insertAdjacentHTML('beforeend', `<div class="game-result"><div><p class="r-title">Trial complete</p><div class="r-amount">${money(amount)} sample discount</div><p class="r-sub">${Math.round(result.accuracy * 100)}% accuracy · No student reward was saved</p><button class="primary-btn full" id="finish-trial">Finish trial</button></div></div>`);
+    frame.insertAdjacentHTML('beforeend', `<div class="game-result"><div><p class="r-title">Trial complete</p><div class="r-amount">${money(amount)} sample discount</div><p class="r-sub">Four-arrow average: ${Math.round(result.accuracy * 100)}% · No student reward was saved</p><button class="primary-btn full" id="finish-trial">Finish trial</button></div></div>`);
     frame.querySelector('#finish-trial').addEventListener('click', leave);
   }, { targetSpeed: config.targetSpeed });
   layer.querySelector('.game-back').addEventListener('click', leave);

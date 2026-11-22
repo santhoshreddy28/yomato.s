@@ -6,11 +6,11 @@ const W = 360, H = 640, GOLD = '#e7be5a', IVORY = '#f6eedb', LEAF = '#1f5c45', T
 
 /** Mounts the game into `frame`. Calls onEnd({hit, shots, playMs}) once. Returns { destroy }. */
 export function mountGame(frame, onEnd, { targetSpeed = 2.4 } = {}) {
-  frame.innerHTML = `<canvas aria-label="Archery game"></canvas><div class="g-timer"><i></i></div><div class="g-arrows" aria-label="Arrows left"></div><div class="g-hint">Drag to aim · release to shoot</div>`;
+  frame.innerHTML = `<canvas aria-label="Archery game"></canvas><div class="g-timer"><i></i></div><div class="g-arrows" aria-label="Arrows left"></div><div class="g-hint">Use all 4 arrows · drag to aim and release</div>`;
   const canvas = frame.querySelector('canvas'), ctx = canvas.getContext('2d');
   const timerBar = frame.querySelector('.g-timer i'), pips = frame.querySelector('.g-arrows'), hint = frame.querySelector('.g-hint');
   const player = { x: W / 2, y: 560 };
-  let scale = 1, raf = 0, last = 0, t = 0, aim = null, arrow = null, shots = 0, done = false, hit = false, bullseye = false, accuracy = 0, hitAt = 0, flash = 0, started = 0;
+  let scale = 1, raf = 0, last = 0, t = 0, aim = null, arrow = null, shots = 0, done = false, hit = false, bullseye = false, accuracy = 0, arrowAccuracy = 0, scoreTotal = 0, flash = 0, started = 0;
   const shotData = [];
   const particles = [];
 
@@ -58,11 +58,16 @@ export function mountGame(frame, onEnd, { targetSpeed = 2.4 } = {}) {
     if (done) return; done = true; cancelAnimationFrame(raf);
     onEnd({ hit, bullseye, accuracy, shots, playMs: Math.round(t), shotData });
   }
+  function finishArrow() {
+    scoreTotal += arrowAccuracy;
+    accuracy = scoreTotal / MAX_ARROWS; // Unused arrows count as zero; every game is scored out of four.
+    arrowAccuracy = 0;
+  }
 
   function step(now) {
     if (done) return;
     const dt = Math.min(40, now - (last || now)); last = now;
-    if (!hit) t += dt;
+    t += dt;
     if (!started) started = now;
     timerBar.style.transform = `scaleX(${Math.max(0, 1 - t / (GAME_SECONDS * 1000))})`;
 
@@ -80,16 +85,15 @@ export function mountGame(frame, onEnd, { targetSpeed = 2.4 } = {}) {
       for (let s = 0; s < 4 && arrow; s++) {   // small sub-steps so a fast arrow can never skip through the target
         arrow.x += arrow.vx * k / 4; arrow.y += arrow.vy * k / 4;   // straight flight so the scope is exact
         const error = Math.hypot(arrow.x - e.x, arrow.y - e.y);
-        accuracy = Math.max(accuracy, Math.max(0, 1 - error / (TARGET_R * 2)));
+        arrowAccuracy = Math.max(arrowAccuracy, Math.max(0, 1 - error / (TARGET_R * 2)));
         if (error < TARGET_R) {
-          hit = true; bullseye = error <= TARGET_R * 0.1; hitAt = t; flash = 160; arrow = null;
+          hit = true; bullseye ||= error <= TARGET_R * 0.1; flash = 160; arrow = null; finishArrow();
           for (let i = 0; i < 18; i++) { const a = Math.random() * 6.28, sp = 0.05 + Math.random() * 0.12; particles.push({ x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 600 }); }
-          setTimeout(end, 750);
         }
       }
       if (arrow) {
         drawArrow(arrow.x, arrow.y, Math.atan2(arrow.vy, arrow.vx));
-        if (arrow.y < -30 || arrow.x < -30 || arrow.x > W + 30 || arrow.y > H + 30) arrow = null;
+        if (arrow.y < -30 || arrow.x < -30 || arrow.x > W + 30 || arrow.y > H + 30) { arrow = null; finishArrow(); }
       }
     }
     for (let i = particles.length - 1; i >= 0; i--) {
@@ -97,7 +101,7 @@ export function mountGame(frame, onEnd, { targetSpeed = 2.4 } = {}) {
       if (p.life <= 0) { particles.splice(i, 1); continue; }
       ctx.globalAlpha = p.life / 600; ctx.fillStyle = GOLD; ctx.fillRect(p.x, p.y, 3, 3); ctx.globalAlpha = 1;
     }
-    if (aim && !arrow && !hit) {
+    if (aim && !arrow) {
       const sx = player.x, sy = player.y - 14;
       ctx.save(); ctx.setLineDash([3, 7]); ctx.strokeStyle = IVORY; ctx.globalAlpha = 0.45; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + Math.cos(aim.a) * 420, sy + Math.sin(aim.a) * 420); ctx.stroke(); ctx.restore();
@@ -109,7 +113,7 @@ export function mountGame(frame, onEnd, { targetSpeed = 2.4 } = {}) {
       ctx.restore();
       drawArrow(sx + Math.cos(aim.a) * 18, sy + Math.sin(aim.a) * 18, aim.a);
     }
-    if (!hit && (t >= GAME_SECONDS * 1000 || (shots >= MAX_ARROWS && !arrow))) { end(); return; }
+    if (!arrow && (t >= GAME_SECONDS * 1000 || shots >= MAX_ARROWS)) { end(); return; }
     raf = requestAnimationFrame(step);
   }
 
@@ -120,7 +124,7 @@ export function mountGame(frame, onEnd, { targetSpeed = 2.4 } = {}) {
     return Math.atan2(Math.min(dy, -20), dx);      // always shoots upward
   };
   canvas.addEventListener('pointerdown', ev => {
-    if (done || hit || arrow || shots >= MAX_ARROWS) return;
+    if (done || arrow || shots >= MAX_ARROWS || t >= GAME_SECONDS * 1000) return;
     canvas.setPointerCapture(ev.pointerId); hint.classList.add('off');
     const a = angleTo(pt(ev)); aim = a == null ? { a: -Math.PI / 2 } : { a };
   });
