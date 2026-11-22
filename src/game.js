@@ -10,8 +10,9 @@ export function mountGame(frame, onEnd, { targetSpeed = 2.4 } = {}) {
   const canvas = frame.querySelector('canvas'), ctx = canvas.getContext('2d');
   const timerBar = frame.querySelector('.g-timer i'), pips = frame.querySelector('.g-arrows'), hint = frame.querySelector('.g-hint');
   const player = { x: W / 2, y: 560 };
-  let scale = 1, raf = 0, last = 0, t = 0, aim = null, arrow = null, shots = 0, done = false, hit = false, bullseye = false, accuracy = 0, arrowAccuracy = 0, scoreTotal = 0, flash = 0, started = 0;
+  let scale = 1, raf = 0, last = 0, t = 0, aim = null, arrow = null, shots = 0, done = false, hit = false, bullseye = false, accuracy = 0, arrowBestDistance = Infinity, arrowHit = false, scoreTotal = 0, flash = 0, started = 0;
   const shotData = [];
+  const ringScores = [];
   const particles = [];
 
   const fit = () => {
@@ -56,12 +57,15 @@ export function mountGame(frame, onEnd, { targetSpeed = 2.4 } = {}) {
 
   function end() {
     if (done) return; done = true; cancelAnimationFrame(raf);
-    onEnd({ hit, bullseye, accuracy, shots, playMs: Math.round(t), shotData });
+    onEnd({ hit, bullseye, accuracy, ringScores, shots, playMs: Math.round(t), shotData });
   }
   function finishArrow() {
-    scoreTotal += arrowAccuracy;
-    accuracy = scoreTotal / MAX_ARROWS; // Unused arrows count as zero; every game is scored out of four.
-    arrowAccuracy = 0;
+    const d = arrowBestDistance;
+    const ring = d <= 3.8 ? 5 : d <= 11.4 ? 4 : d <= 20.52 ? 3 : d <= 29.64 ? 2 : d <= TARGET_R ? 1 : 0;
+    ringScores.push(ring);
+    scoreTotal += ring / 5;
+    accuracy = scoreTotal / MAX_ARROWS;
+    arrowBestDistance = Infinity; arrowHit = false;
   }
 
   function step(now) {
@@ -85,10 +89,13 @@ export function mountGame(frame, onEnd, { targetSpeed = 2.4 } = {}) {
       for (let s = 0; s < 4 && arrow; s++) {   // small sub-steps so a fast arrow can never skip through the target
         arrow.x += arrow.vx * k / 4; arrow.y += arrow.vy * k / 4;   // straight flight so the scope is exact
         const error = Math.hypot(arrow.x - e.x, arrow.y - e.y);
-        arrowAccuracy = Math.max(arrowAccuracy, Math.max(0, 1 - error / (TARGET_R * 2)));
+        arrowBestDistance = Math.min(arrowBestDistance, error);
         if (error < TARGET_R) {
-          hit = true; bullseye ||= error <= TARGET_R * 0.1; flash = 160; arrow = null; finishArrow();
-          for (let i = 0; i < 18; i++) { const a = Math.random() * 6.28, sp = 0.05 + Math.random() * 0.12; particles.push({ x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 600 }); }
+          hit = true; bullseye ||= error <= 3.8;
+          if (!arrowHit) {
+            arrowHit = true; flash = 160;
+            for (let i = 0; i < 18; i++) { const a = Math.random() * 6.28, sp = 0.05 + Math.random() * 0.12; particles.push({ x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 600 }); }
+          }
         }
       }
       if (arrow) {
@@ -141,3 +148,4 @@ export function mountGame(frame, onEnd, { targetSpeed = 2.4 } = {}) {
   raf = requestAnimationFrame(step);
   return { destroy() { done = true; cancelAnimationFrame(raf); ro.disconnect(); } };
 }
+

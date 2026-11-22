@@ -3,7 +3,7 @@ import '@fontsource-variable/fraunces';
 import '@fontsource-variable/dm-sans';
 import { mountGame } from './game.js';
 import { SHIFTS, DEMO, shiftState, bookingShift, nextBookingIn, hms } from './shifts.js';
-import { computeDiscount } from './discount.js';
+import { arrowRewardsForScores, computeDiscount } from './discount.js';
 import { CLOUD, sb } from './supabase.js';
 import * as cloud from './cloud.js';
 import { staffUnlocked, staffLock, staffLogin } from './staff.js';
@@ -15,6 +15,7 @@ const ROOT = PORTAL === 'student' ? './' : '../';
 // Staff endpoints:  /1121/ (delivery)   /A1121/ (admin)
 const PORTAL_URL = { student: ROOT, admin: ROOT + 'A1121/', delivery: ROOT + '1121/' };
 const IMG_BASE = ROOT + 'images/foods/';
+const money2 = n => '₹' + Number(n || 0).toFixed(2);
 const esc = (s = '') => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const ICON = {
@@ -295,7 +296,7 @@ const discountNow = () => {
   if (CLOUD) {
     const reward = state.cloudGame || state.pendingGameReward;
     if (reward?.discount != null) return Math.min(subtotal(), Number(reward.discount));
-    return reward ? computeDiscount({ subtotal: subtotal(), accuracy: reward.accuracy, minDiscount: reward.minDiscount ?? state.gameConfig.minDiscount, maxDiscount: reward.maxDiscount ?? state.gameConfig.maxDiscount }) : 0;
+    return reward ? computeDiscount({ subtotal: subtotal(), accuracy: reward.accuracy, ringScores: reward.ringScores, minDiscount: reward.minDiscount ?? state.gameConfig.minDiscount, maxDiscount: reward.maxDiscount ?? state.gameConfig.maxDiscount }) : 0;
   }
   const challengeId = state.challengeId || state.pendingGameReward?.id;
   if (challengeId && state.pendingGameReward?.id === challengeId && state.pendingGameReward.discount != null) return Math.min(subtotal(), Number(state.pendingGameReward.discount));
@@ -312,10 +313,12 @@ async function launchGame() {
   const leave = () => { game.destroy(); layer.remove(); };
   const game = mountGame(layer.querySelector('.game-stage'), async result => {
     let earned;
-    if (CLOUD) { try { const r = await cloud.submitGame(state.challengeId, result); state.cloudGame = r.hit == null ? null : { hit: r.hit, bullseye: r.bullseye, accuracy: r.accuracy, arrows: r.arrows, minDiscount: state.challengeMinDiscount ?? state.gameConfig.minDiscount, maxDiscount: state.challengeMaxDiscount ?? state.gameConfig.maxDiscount }; } catch { state.cloudGame = null; } earned = discountNow(); }
+    if (CLOUD) { try { const r = await cloud.submitGame(state.challengeId, result); state.cloudGame = r.hit == null ? null : { hit: r.hit, bullseye: r.bullseye, accuracy: r.accuracy, arrows: r.arrows, ringScores: result.ringScores, arrowRewards: (r.arrow_rewards || []).map(Number), discount: Number(r.reward_amount), minDiscount: state.challengeMinDiscount ?? state.gameConfig.minDiscount, maxDiscount: state.challengeMaxDiscount ?? state.gameConfig.maxDiscount }; } catch { state.cloudGame = null; } earned = discountNow(); }
     else earned = submitGameResult(state.challengeId, result);
     frame.querySelector('.game-back').remove();
-    frame.insertAdjacentHTML('beforeend', `<div class="game-result"><div><p class="r-title">${result.hit ? 'Well aimed' : 'Thank you for playing'}</p><div class="r-amount">${money(earned)} off</div><p class="r-sub">Four-arrow average: ${Math.round((state.cloudGame?.accuracy ?? result.accuracy) * 100)}% · Applied to your reservation</p><button class="primary-btn full" id="apply-reward">Continue</button></div></div>`);
+    const payouts = (state.cloudGame?.arrowRewards?.length ? state.cloudGame.arrowRewards : arrowRewardsForScores(result.ringScores, state.challengeMinDiscount ?? state.gameConfig.minDiscount, state.challengeMaxDiscount ?? state.gameConfig.maxDiscount));
+    const payoutLines = Array.from({ length: 4 }, (_, i) => `Arrow ${i + 1}: ${money2(payouts[i] || 0)}`).join(' · ');
+    frame.insertAdjacentHTML('beforeend', `<div class="game-result"><div><p class="r-title">${result.hit ? 'Well aimed' : 'Thank you for playing'}</p><div class="r-amount">${money(earned)} off</div><p class="r-sub">${payoutLines}<br>Arrow payouts added to your reservation</p><button class="primary-btn full" id="apply-reward">Continue</button></div></div>`);
     frame.querySelector('#apply-reward').addEventListener('click', () => { leave(); reviewModal(); });
   }, { targetSpeed: state.gameConfig.targetSpeed });
   layer.querySelector('.game-back').addEventListener('click', () => { leave(); state.challengeId = null; state.cloudGame = null; reviewModal(); });
@@ -328,9 +331,11 @@ function launchTrialGame() {
   const frame = layer.querySelector('.game-frame');
   const leave = () => { game.destroy(); layer.remove(); };
   const game = mountGame(layer.querySelector('.game-stage'), result => {
-    const amount = computeDiscount({ subtotal: Number.MAX_SAFE_INTEGER, accuracy: result.accuracy, minDiscount: config.minDiscount, maxDiscount: config.maxDiscount });
+    const payouts = arrowRewardsForScores(result.ringScores, config.minDiscount, config.maxDiscount);
+    const amount = computeDiscount({ subtotal: Number.MAX_SAFE_INTEGER, ringScores: result.ringScores, minDiscount: config.minDiscount, maxDiscount: config.maxDiscount });
     frame.querySelector('.game-back').remove();
-    frame.insertAdjacentHTML('beforeend', `<div class="game-result"><div><p class="r-title">Trial complete</p><div class="r-amount">${money(amount)} sample discount</div><p class="r-sub">Four-arrow average: ${Math.round(result.accuracy * 100)}% · No student reward was saved</p><button class="primary-btn full" id="finish-trial">Finish trial</button></div></div>`);
+    const payoutLines = payouts.map((value, i) => `Arrow ${i + 1}: ${money2(value)}`).join(' · ');
+    frame.insertAdjacentHTML('beforeend', `<div class="game-result"><div><p class="r-title">Trial complete</p><div class="r-amount">${money(amount)} sample discount</div><p class="r-sub">${payoutLines}<br>Missed arrows earn ₹0 · No student reward was saved</p><button class="primary-btn full" id="finish-trial">Finish trial</button></div></div>`);
     frame.querySelector('#finish-trial').addEventListener('click', leave);
   }, { targetSpeed: config.targetSpeed });
   layer.querySelector('.game-back').addEventListener('click', leave);
@@ -515,3 +520,4 @@ if (CLOUD) {
 } else if (PORTAL !== 'student' && !staffUnlocked(PORTAL)) authScreen();
 else render();
 if (import.meta.env.PROD && 'serviceWorker' in navigator && location.protocol.startsWith('http')) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+

@@ -56,7 +56,7 @@ export async function refreshData() {
   state.gameConfig = fail(gameConfigResult);
   state.gamePlayed = !!state.gameConfig.played;
   const reward = fail(gameRewardResult);
-  state.pendingGameReward = reward ? { id: reward.id, hit: reward.hit, bullseye: reward.bullseye, accuracy: Number(reward.accuracy), arrows: reward.arrows, minDiscount: Number(reward.min_discount), maxDiscount: Number(reward.max_discount), discount: Number(reward.discount) } : null;
+  state.pendingGameReward = reward ? { id: reward.id, hit: reward.hit, bullseye: reward.bullseye, accuracy: Number(reward.accuracy), arrows: reward.arrows, arrowRewards: Array.isArray(reward.arrow_rewards) ? reward.arrow_rewards.map(Number) : [], minDiscount: Number(reward.min_discount), maxDiscount: Number(reward.max_discount), discount: Number(reward.discount) } : null;
   return JSON.stringify([state.menu, state.orders, state.gameConfig, state.pendingGameReward, SHIFTS.map(s => s.book + s.del)]);
 }
 
@@ -117,3 +117,4 @@ export async function saveShifts(list) {
   const x = list[0];
   fail(await sb.from('shift_config').update({ open_t: hhmm(x.open), close_t: hhmm(x.close), deliver_start: hhmm(x.dStart), deliver_end: hhmm(x.dEnd) }).eq('id', 1));
 }
+
