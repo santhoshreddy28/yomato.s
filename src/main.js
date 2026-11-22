@@ -180,10 +180,10 @@ function adminGame() {
   return `${pageHead('Game controls', 'Manage access, rewards and target movement')}
   <form id="game-form" class="shift-admin"><div class="panel"><h3>Student game settings</h3><div class="form-grid">
     <label class="field full-width game-toggle"><span>Game available</span><input name="enabled" type="checkbox" ${c.enabled ? 'checked' : ''}> Students can play the discount game</label>
-    <div class="field"><label>Maximum discount (₹)</label><input name="maxDiscount" type="number" min="0" max="10" step="1" value="${Math.min(10, c.maxDiscount)}" required></div>
+    <div class="field"><label>Maximum discount (₹)</label><input name="maxDiscount" type="number" min="4" max="9" step="1" value="${Math.min(9, Math.max(4, c.maxDiscount))}" required></div>
     <div class="field"><label>Target speed (1–3.5×)</label><input name="targetSpeed" type="number" min="1" max="3.5" step="0.1" value="${c.targetSpeed}" required></div>
   </div></div><div><button class="primary-btn" type="submit">Save game settings</button></div></form>
-  <p class="footer-note">Each student account gets one game attempt. Rewards are capped at ₹10.</p>`;
+  <p class="footer-note">Each student account gets one game attempt. Every game reward is between ₹4 and ₹9.</p>`;
 }
 
 /* photo upload: resized in the browser so it stays small and sharp */
@@ -405,7 +405,7 @@ document.addEventListener('submit', e => {
     updateShifts(list); render(); showToast('Shift times saved');
   }
   else if (f.id === 'game-form') {
-    const config = { enabled: f.elements.enabled.checked, maxDiscount: Math.min(10, Math.max(0, Number(d.maxDiscount))), targetSpeed: Math.min(3.5, Math.max(1, Number(d.targetSpeed))) };
+    const config = { enabled: f.elements.enabled.checked, maxDiscount: Math.min(9, Math.max(4, Number(d.maxDiscount))), targetSpeed: Math.min(3.5, Math.max(1, Number(d.targetSpeed))) };
     if (CLOUD) { run(() => cloud.saveGameConfig(config), 'Game settings saved'); return; }
     state.gameConfig = config; persist(); render(); showToast('Game settings saved');
   }

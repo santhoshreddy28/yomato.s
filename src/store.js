@@ -46,7 +46,7 @@ export const state = {
   profile: saved.profile || { name: '', phone: '', block: 'A', floor: '1', room: '' },
   challenges: saved.challenges || {},
   gamePlayed: !!saved.gamePlayed || Object.keys(saved.challenges || {}).length > 0,
-  gameConfig: saved.gameConfig || { enabled: true, maxDiscount: 10, targetSpeed: 2.4 },
+  gameConfig: saved.gameConfig ? { ...saved.gameConfig, maxDiscount: Math.min(9, Math.max(4, Number(saved.gameConfig.maxDiscount) || 9)) } : { enabled: true, maxDiscount: 9, targetSpeed: 2.4 },
   checkout: null,        // delivery details of the order being placed
   checkoutKey: null,     // idempotency key for the order being placed
   challengeId: null,     // game challenge for the order being placed
