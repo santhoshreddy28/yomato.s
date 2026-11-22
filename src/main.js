@@ -181,6 +181,7 @@ function adminShifts() {
 function adminGame() {
   const c = state.gameConfig;
   return `${pageHead('Game controls', 'Manage access, rewards and target movement')}
+  <div class="panel"><h3>Trial game</h3><p class="footer-note">Try the current game speed and reward range. A trial does not use a student’s chance or save a reward.</p><button class="secondary-btn" type="button" data-action="trial-game">Play a trial game</button></div>
   <form id="game-form" class="shift-admin"><div class="panel"><h3>Student game settings</h3><div class="form-grid">
     <label class="field full-width game-toggle"><span>Game available</span><input name="enabled" type="checkbox" ${c.enabled ? 'checked' : ''}> Students can play the discount game</label>
     <div class="field"><label>Minimum discount (₹)</label><input name="minDiscount" type="number" min="0" step="1" value="${c.minDiscount}" required></div>
@@ -323,6 +324,21 @@ async function launchGame() {
   }, { targetSpeed: state.gameConfig.targetSpeed });
   layer.querySelector('.game-back').addEventListener('click', () => { leave(); state.challengeId = null; state.cloudGame = null; reviewModal(); });
 }
+function launchTrialGame() {
+  const config = { ...state.gameConfig };
+  const layer = document.createElement('div'); layer.className = 'game-screen';
+  layer.innerHTML = `<div class="game-frame"><div class="game-stage"></div><button class="game-back" aria-label="Exit trial game">${ico('back')}</button></div>`;
+  document.body.append(layer);
+  const frame = layer.querySelector('.game-frame');
+  const leave = () => { game.destroy(); layer.remove(); };
+  const game = mountGame(layer.querySelector('.game-stage'), result => {
+    const amount = computeDiscount({ subtotal: Number.MAX_SAFE_INTEGER, accuracy: result.accuracy, minDiscount: config.minDiscount, maxDiscount: config.maxDiscount });
+    frame.querySelector('.game-back').remove();
+    frame.insertAdjacentHTML('beforeend', `<div class="game-result"><div><p class="r-title">Trial complete</p><div class="r-amount">${money(amount)} sample discount</div><p class="r-sub">${Math.round(result.accuracy * 100)}% accuracy · No student reward was saved</p><button class="primary-btn full" id="finish-trial">Finish trial</button></div></div>`);
+    frame.querySelector('#finish-trial').addEventListener('click', leave);
+  }, { targetSpeed: config.targetSpeed });
+  layer.querySelector('.game-back').addEventListener('click', leave);
+}
 function reviewModal() {
   const total = subtotal(), discount = discountNow();
   openModal(`${modalHead('Your reservation')}<div class="review-lines">${cartEntries().map(({ item, qty }) => `<div class="cart-row"><strong>${qty} × ${esc(item.name)}</strong><b>${money(qty * item.price)}</b></div>`).join('')}</div>
@@ -370,6 +386,7 @@ document.addEventListener('click', async e => {
     case 'checkout': if (!bookingShift()) { showToast('Booking is closed right now'); refreshCart(); break; } closeModal(); checkoutModal(); break;
     case 'skip-game': if (readCheckout()) { state.challengeId = null; state.cloudGame = null; reviewModal(); } break;
     case 'place-order': submitOrder(b); break;
+    case 'trial-game': if (PORTAL === 'admin') launchTrialGame(); break;
     case 'add-food': foodModal(); break;
     case 'edit-food': foodModal(id); break;
     case 'remove-photo': pendingImage = null; document.getElementById('photo-preview').innerHTML = '<span class="ph">–</span>'; b.remove(); break;
