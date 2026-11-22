@@ -181,17 +181,17 @@ function adminShifts() {
 function adminGame() {
   const c = state.gameConfig;
   return `${pageHead('Game controls', 'Manage access, rewards and target movement')}
-  <div class="panel"><h3>Trial game</h3><p class="footer-note">Try the current game speed and reward range. A trial does not use a student’s chance or save a reward.</p><button class="secondary-btn" type="button" data-action="trial-game">Play a trial game</button></div>
-  <form id="game-form" class="shift-admin"><div class="panel"><h3>Student game settings</h3><div class="form-grid">
-    <label class="field full-width game-toggle"><span>Game available</span><input name="enabled" type="checkbox" ${c.enabled ? 'checked' : ''}> Students can play the discount game</label>
-    <div class="field"><label>Minimum discount (₹)</label><input name="minDiscount" type="number" min="0" step="1" value="${c.minDiscount}" required></div>
-    <div class="field"><label>Maximum discount (₹)</label><input name="maxDiscount" type="number" min="0" step="1" value="${c.maxDiscount}" required></div>
-    <div class="field"><label>Target speed (1–3.5×)</label><input name="targetSpeed" type="number" min="1" max="3.5" step="0.1" value="${c.targetSpeed}" required></div>
-  </div></div><div><button class="primary-btn" type="submit">Save game settings</button></div></form>
-  <p class="footer-note">The closest shot sets the reward between the minimum and maximum. Discounts are rounded to the nearest rupee and cannot exceed the order total.</p>
-  <form id="game-replay-form" class="shift-admin"><div class="panel"><h3>Give a student another play</h3><div class="field"><label>Student’s registered mobile number</label><input name="phone" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="10-digit mobile number" required></div>
-  <p class="footer-note">This adds one extra game chance to that student’s account.</p></div><div><button class="secondary-btn" type="submit">Allow this student to play again</button></div></form>
-  <form id="game-replay-all-form" class="shift-admin"><div class="panel"><h3>Other game actions</h3><p class="footer-note">Give every student who has used a game chance this shift one additional chance.</p></div><div><button class="secondary-btn" type="submit">Give all played students one more chance</button></div></form>`;
+  <div class="game-admin-grid">
+    <section class="panel game-admin-card"><div class="game-section-heading"><span>01</span><div><h3>Trial game</h3><p>Preview the game using the current speed and reward range.</p></div></div><p class="footer-note">Trials do not use a student’s chance or save a reward.</p><button class="secondary-btn" type="button" data-action="trial-game">Play a trial game</button></section>
+    <form id="game-form" class="panel game-admin-card"><div class="game-section-heading"><span>02</span><div><h3>Student game settings</h3><p>Set game access, reward range and target speed.</p></div></div><div class="game-settings-grid">
+      <label class="field full-width game-toggle"><span>Game available</span><input name="enabled" type="checkbox" ${c.enabled ? 'checked' : ''}> Students can play the discount game</label>
+      <div class="field"><label>Minimum discount (₹)</label><input name="minDiscount" type="number" min="0" step="1" value="${c.minDiscount}" required></div>
+      <div class="field"><label>Maximum discount (₹)</label><input name="maxDiscount" type="number" min="0" step="1" value="${c.maxDiscount}" required></div>
+      <div class="field"><label>Target speed (1–3.5×)</label><input name="targetSpeed" type="number" min="1" max="3.5" step="0.1" value="${c.targetSpeed}" required></div>
+    </div><p class="footer-note">The closest shot sets the discount, rounded to the nearest rupee. It cannot exceed the order total.</p><button class="primary-btn" type="submit">Save game settings</button></form>
+    <form id="game-replay-form" class="panel game-admin-card"><div class="game-section-heading"><span>03</span><div><h3>Replay for one student</h3><p>Give one student another chance this shift.</p></div></div><div class="field"><label>Registered mobile number</label><input name="phone" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="10-digit mobile number" required></div><button class="secondary-btn" type="submit">Allow this student to play again</button></form>
+    <form id="game-replay-all-form" class="panel game-admin-card"><div class="game-section-heading"><span>04</span><div><h3>Replay for all played students</h3><p>Give each student who used a game chance this shift one extra chance.</p></div></div><button class="secondary-btn" type="submit">Give all played students one more chance</button></form>
+  </div>`;
 }
 
 /* photo upload: resized in the browser so it stays small and sharp */
