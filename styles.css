@@ -272,6 +272,13 @@ h1,h2,h3,.brand,.stat .value{font-family:var(--head)}
 @media (max-width:420px){.block-cols{gap:8px}.block-col .delivery-card{padding:10px}.block-col .primary-btn{padding:11px 6px;font-size:13px}}
 .block-col .d-meta{flex-direction:column;align-items:flex-start;gap:4px}.block-col .d-meta b{white-space:nowrap;font-size:14px}
 .thumb img{object-fit:contain}
+.stock-warning{padding:12px 16px;border:1px solid #ef6258;border-radius:12px;background:#7e211c;color:#fff;font-size:14px;font-weight:800;letter-spacing:1px;text-align:center}
+.sold-out{min-height:calc(100dvh - 64px);display:grid;place-items:center}
+.sold-out .today-body{max-width:680px;padding:32px}
+.sold-out .status-card{width:min(500px,100%)}
+.order-otp{display:flex;align-items:center;gap:10px;margin:12px 0;padding:12px 14px;border:1px solid var(--accent);border-radius:12px;color:var(--accent-text);font-size:13px;letter-spacing:.4px}
+.order-otp strong{font:700 20px var(--head);letter-spacing:3px;color:var(--text)}
+.otp-form{display:grid;gap:8px}.otp-form label{font-size:12px;font-weight:700;color:var(--soft)}.otp-form>div{display:flex;gap:8px}.otp-form input{min-width:0;flex:1;padding:12px;border:1px solid var(--line2);border-radius:10px;background:var(--bg);color:var(--text);font:700 17px var(--head);letter-spacing:3px}.otp-form .primary-btn{white-space:nowrap}
 /* Install button: rotating gold→green ring, shimmer sweep, bobbing arrow */
 @property --a{syntax:'<angle>';initial-value:0deg;inherits:false}
 .install-btn{--a:0deg;position:relative;display:inline-flex;align-items:center;gap:9px;padding:5px 15px 5px 5px;border:1.5px solid transparent;border-radius:99px;text-decoration:none;color:var(--text);overflow:hidden;isolation:isolate;

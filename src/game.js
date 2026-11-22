@@ -10,7 +10,8 @@ export function mountGame(frame, onEnd) {
   const canvas = frame.querySelector('canvas'), ctx = canvas.getContext('2d');
   const timerBar = frame.querySelector('.g-timer i'), pips = frame.querySelector('.g-arrows'), hint = frame.querySelector('.g-hint');
   const player = { x: W / 2, y: 560 };
-  let scale = 1, raf = 0, last = 0, t = 0, aim = null, arrow = null, shots = 0, done = false, hit = false, hitAt = 0, flash = 0, started = 0;
+  let scale = 1, raf = 0, last = 0, t = 0, aim = null, arrow = null, shots = 0, done = false, hit = false, bullseye = false, accuracy = 0, hitAt = 0, flash = 0, started = 0;
+  const shotData = [];
   const particles = [];
 
   const fit = () => {
@@ -25,7 +26,7 @@ export function mountGame(frame, onEnd) {
 
   // Target: sweeps across the top with a changing rhythm.
   const enemy = () => ({
-    x: W / 2 + Math.sin(t * 0.00055) * 100 + Math.sin(t * 0.0013 + 1) * 22,   // slow sweep
+    x: W / 2 + Math.sin(t * 0.0011) * 100 + Math.sin(t * 0.0026 + 1) * 22,
     y: 130 + Math.sin(t * 0.0009) * 8,
   });
 
@@ -55,7 +56,7 @@ export function mountGame(frame, onEnd) {
 
   function end() {
     if (done) return; done = true; cancelAnimationFrame(raf);
-    onEnd({ hit, shots, playMs: Math.round(t) });
+    onEnd({ hit, bullseye, accuracy, shots, playMs: Math.round(t), shotData });
   }
 
   function step(now) {
@@ -79,7 +80,8 @@ export function mountGame(frame, onEnd) {
       for (let s = 0; s < 4 && arrow; s++) {   // small sub-steps so a fast arrow can never skip through the target
         arrow.x += arrow.vx * k / 4; arrow.y += arrow.vy * k / 4;   // straight flight so the scope is exact
         if (Math.hypot(arrow.x - e.x, arrow.y - e.y) < TARGET_R) {
-          hit = true; hitAt = t; flash = 160; arrow = null;
+          const error = Math.hypot(arrow.x - e.x, arrow.y - e.y);
+          hit = true; bullseye = error <= TARGET_R * 0.1; accuracy = Math.max(0, 1 - error / TARGET_R); hitAt = t; flash = 160; arrow = null;
           for (let i = 0; i < 18; i++) { const a = Math.random() * 6.28, sp = 0.05 + Math.random() * 0.12; particles.push({ x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 600 }); }
           setTimeout(end, 750);
         }
@@ -125,6 +127,7 @@ export function mountGame(frame, onEnd) {
   canvas.addEventListener('pointerup', () => {
     if (!aim || done) return;
     const a = aim.a; aim = null;
+    shotData.push({ at_ms: Math.round(t), angle: a });
     arrow = { x: player.x + Math.cos(a) * 18, y: player.y - 14 + Math.sin(a) * 18, vx: Math.cos(a) * ARROW_SPEED, vy: Math.sin(a) * ARROW_SPEED };
     shots++; drawPips();
   });

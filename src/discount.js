@@ -12,15 +12,17 @@ export function discountRange(packs) {
 }
 
 /** hit: boolean, shots: arrows used. Miss/no-play-complete => minimum of the tier; hit => max minus extra arrows. */
-export function computeDiscount({ packs, subtotal, hit, shots }) {
+export function computeDiscount({ packs, subtotal, hit, bullseye = false, accuracy = 0, shots }) {
   const [min, max] = discountRange(packs);
-  const earned = hit ? Math.max(min, max - Math.max(0, shots - 1)) : min;
+  const precision = bullseye ? 1 : (hit ? Math.max(0, Math.min(1, Number(accuracy) || 0)) : 0);
+  const earned = min + Math.floor((max - min) * precision) - Math.max(0, shots - 1);
   return Math.max(0, Math.min(subtotal, earned));
 }
 
 /** Plausibility check of a submitted game result. Anything implausible is treated as a miss (minimum tier). */
-export function sanitizeResult({ hit, shots, playMs }) {
+export function sanitizeResult({ hit, bullseye, accuracy, shots, playMs }) {
   const s = Number.isInteger(shots) ? shots : 0;
   const plausible = s >= 1 && s <= MAX_ARROWS && playMs >= s * 350 && playMs <= (GAME_SECONDS + 5) * 1000;
-  return plausible ? { hit: !!hit, shots: s } : { hit: false, shots: Math.min(MAX_ARROWS, Math.max(0, s | 0)) };
+  const score = Math.max(0, Math.min(1, Number(accuracy) || 0));
+  return plausible ? { hit: !!hit, bullseye: !!bullseye && !!hit, accuracy: score, shots: s } : { hit: false, bullseye: false, accuracy: 0, shots: Math.min(MAX_ARROWS, Math.max(0, s | 0)) };
 }

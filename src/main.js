@@ -1,8 +1,8 @@
-import { state, STATUSES, AGENTS, money, cartEntries, cartCount, subtotal, uid, persist, maxQty, isAvailable, issueChallenge, submitGameResult, previewDiscount, placeOrder, updateOrder, saveItem, addItem, removeItem, updateShifts } from './store.js';
+import { state, STATUSES, AGENTS, money, cartEntries, cartCount, subtotal, uid, persist, maxQty, issueChallenge, submitGameResult, previewDiscount, placeOrder, updateOrder, saveItem, addItem, removeItem, updateShifts } from './store.js';
 import '@fontsource-variable/fraunces';
 import '@fontsource-variable/dm-sans';
 import { mountGame } from './game.js';
-import { SHIFTS, DEMO, shiftState, bookingShift, shiftRowState, hms } from './shifts.js';
+import { SHIFTS, DEMO, shiftState, bookingShift, nextBookingIn, hms } from './shifts.js';
 import { computeDiscount } from './discount.js';
 import { CLOUD, sb } from './supabase.js';
 import * as cloud from './cloud.js';
@@ -69,10 +69,10 @@ function photo(item) {
     ? `<img src="${esc(imgSrc(item.image))}" alt="${esc(item.name)}" decoding="async" fetchpriority="high">`
     : `<span class="ph">${esc(item.name[0])}</span>`;
 }
-const todayItem = () => state.menu.find(isAvailable);
-function counterHTML() {
+const todayItem = () => state.menu.find(item => item.available);
+function counterHTML(nextOnly = false) {
   const st = shiftState(), s = st.open || st.next;
-  return `<div class="status-card ${st.open ? 'live' : ''}"><div><span class="k">${st.open ? 'Reservations close in' : 'Reservations open in'}</span><b id="counter">${hms(st.open ? st.closesIn : st.opensIn)}</b></div>
+  return `<div class="status-card ${st.open && !nextOnly ? 'live' : ''}"><div><span class="k">${st.open && !nextOnly ? 'Reservations close in' : 'Reservations open in'}</span><b id="counter" data-mode="${nextOnly ? 'next' : 'shift'}">${hms(nextOnly ? nextBookingIn() : st.open ? st.closesIn : st.opensIn)}</b></div>
   <i class="sep"></i><div><span class="k">Delivered between</span><b class="t">${s.del}</b></div></div>`;
 }
 function orderBox(item) {
@@ -86,21 +86,23 @@ setInterval(() => {
   const el = document.getElementById('counter'); if (!el) return;
   const st = shiftState();
   if (st.key !== lastShiftKey) { lastShiftKey = st.key; refreshCart(); return; }
-  el.textContent = hms(st.open ? st.closesIn : st.opensIn);
+  el.textContent = hms(el.dataset.mode === 'next' ? nextBookingIn() : st.open ? st.closesIn : st.opensIn);
 }, 1000);
 function menuPage() {
   const item = todayItem();
   if (!item) return `<section class="today closed"><div class="today-body"><p class="eyebrow"><span>Today</span></p><h1>Today’s meal will be announced soon.</h1><p class="desc">Thank you for your patience. Please check back shortly.</p></div></section>`;
+  if (item.stock === 0) return `<section class="today closed sold-out"><div class="today-body"><p class="eyebrow"><span>Today · Fully booked</span></p><h1>All available plates have been booked.</h1><p class="desc">Thank you for your interest. The next booking window opens in:</p>${counterHTML(true)}</div></section>`;
   state.cart = { [item.id]: Math.min(state.cart[item.id] || 1, maxQty(item)) || 1 };
   const day = new Date().toLocaleDateString(undefined, { weekday: 'long' });
   return `<section class="today"><div class="today-art"><div class="arch"><div class="arch-in">${photo(item)}</div></div></div>
   <div class="today-body"><p class="eyebrow"><span>Today’s meal · ${day}</span></p><h1>${esc(item.name)}</h1><p class="desc">${esc(item.desc)}</p><div class="orn" aria-hidden="true"><i></i></div>
-  <div id="order-box">${orderBox(item)}</div></div></section>`;
+  <div id="order-box">${item.stock != null && item.stock <= 5 ? `<div class="stock-warning" role="status">ONLY ${item.stock} LEFT</div>` : ''}${orderBox(item)}</div></div></section>`;
 }
 function orderCard(o) {
   return `<div class="order-card"><div class="order-head"><span class="order-id">Ref. ${esc(o.id)}</span><span class="status ${statusClass(o.status)}">${esc(o.status)}</span></div>
   <div class="order-items">${o.items.map(i => `${i.qty} × ${esc(i.name)}`).join(' · ')}</div>
   ${o.shift ? `<div class="order-shift">Delivery between <b>${esc(o.shift.delivery)}</b></div>` : ''}
+  ${o.deliveryOtp ? `<div class="order-otp">Delivery OTP <strong>${esc(o.deliveryOtp)}</strong></div>` : ''}
   <div class="order-meta"><span>Block ${esc(o.customer.block)} · Room ${esc(o.customer.room)}</span><span>${new Date(o.createdAt).toLocaleString()}</span>
   <strong>${o.discount ? `<s>${money(o.subtotal)}</s> ` : ''}${money(o.total)}</strong></div></div>`;
 }
@@ -118,7 +120,7 @@ function fields(p) {
   return `<div class="field full-width"><label>Full name</label><input name="name" value="${esc(p.name)}" placeholder="Your name" autocomplete="name" required></div>
   <div class="field full-width"><label>Mobile number</label><input name="phone" value="${esc(p.phone)}" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="10-digit mobile number" autocomplete="tel" required></div>
   <div class="field"><label>Block</label><select name="block"><option value="A" ${p.block === 'A' ? 'selected' : ''}>Block A</option><option value="B" ${p.block === 'B' ? 'selected' : ''}>Block B</option></select></div>
-  <div class="field"><label>Room number</label><input name="room" value="${esc(p.room)}" inputmode="numeric" pattern="[0-9]{3,4}" maxlength="4" placeholder="e.g. 1121" required></div>`;
+  <div class="field"><label>Room number</label><input name="room" value="${esc(p.room)}" inputmode="numeric" pattern="[0-9]{3,4}" maxlength="4" placeholder="Enter your room number" required></div>`;
 }
 /** Room 612 → floor 6, 1012 → floor 10, 1121 → floor 11. */
 const floorOf = room => Math.floor((parseInt(String(room).replace(/\D/g, ''), 10) || 0) / 100);
@@ -151,7 +153,7 @@ function adminOrders() {
     <td>${esc(o.customer.block)} · ${esc(o.customer.floor)}F · ${esc(o.customer.room)}${o.shift ? `<br><span class="muted">${esc(o.shift.label)}</span>` : ''}</td>
     <td>${o.items.map(i => `${i.qty}× ${esc(i.name)}`).join('<br>')}</td>
     <td>${money(o.total)}${o.discount ? `<br><span class="muted">−${money(o.discount)}</span>` : ''}</td>
-    <td><select class="select-small" data-order-status="${o.id}" ${o.status === 'Cancelled' ? 'disabled' : ''}>${STATUSES.map(s => `<option ${o.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></td>
+    <td><select class="select-small" data-order-status="${o.id}" ${['Cancelled', 'Delivered'].includes(o.status) ? 'disabled' : ''}>${STATUSES.filter(s => s !== 'Delivered' || o.status === 'Delivered').map(s => `<option ${o.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></td>
     <td><select class="select-small" data-agent="${o.id}">${AGENTS.map(a => `<option ${o.agent === a ? 'selected' : ''}>${a}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>` : empty('No orders to show.')}`;
 }
 function adminMenu() {
@@ -166,10 +168,10 @@ function adminMenu() {
 }
 const hhmm = ([h, m]) => String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 function adminShifts() {
-  const f = (i, k, label, v) => `<div class="field"><label>${label}</label><input type="time" name="${k}${i}" value="${hhmm(v)}" required></div>`;
+  const s = SHIFTS[0], f = (k, label, v) => `<div class="field"><label>${label}</label><input type="time" name="${k}" value="${hhmm(v)}" required></div>`;
   return `${pageHead('Shifts', 'Booking and delivery times shown to students')}
-  <form id="shifts-form" class="shift-admin">${SHIFTS.map((s, i) => `<div class="panel"><h3>${s.label}</h3><div class="form-grid">
-    ${f(i, 'open', 'Booking opens', s.open)}${f(i, 'close', 'Booking closes', s.close)}${f(i, 'ds', 'Delivery starts', s.dStart)}${f(i, 'de', 'Delivery ends', s.dEnd)}</div></div>`).join('')}
+  <form id="shifts-form" class="shift-admin"><div class="panel"><h3>Daily booking shift</h3><div class="form-grid">
+    ${f('open', 'Booking opens', s.open)}${f('close', 'Booking closes', s.close)}${f('ds', 'Delivery starts', s.dStart)}${f('de', 'Delivery ends', s.dEnd)}</div></div>
   <div><button class="primary-btn" type="submit">Save times</button></div></form>
   <p class="footer-note">Times use the device clock (IST on the hostel's devices). Booking closes automatically when a window ends.</p>`;
 }
@@ -208,7 +210,7 @@ const roomNum = r => parseInt(String(r).replace(/\D/g, ''), 10) || 0;
 function deliveryCard(o, compact = false) {
   const go = o.status === 'Ready for pickup' || o.status === 'Out for delivery';   // contact shown only once the order is in a delivery agent's hands
   const action = o.status === 'Ready for pickup' ? `<button class="primary-btn full" data-action="pickup" data-id="${o.id}">Picked up</button>`
-    : o.status === 'Out for delivery' ? `<button class="primary-btn full" data-action="deliver" data-id="${o.id}">Mark delivered</button>`
+    : o.status === 'Out for delivery' ? `<form class="otp-form" data-otp-order="${esc(o.id)}"><label>Student’s 6-digit OTP</label><div><input name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required placeholder="Enter OTP"><button class="primary-btn" type="submit">Verify &amp; deliver</button></div></form>`
     : o.status === 'Delivered' ? '' : `<div class="muted small center">Kitchen: ${esc(o.status)}</div>`;
   return `<article class="delivery-card ${go ? '' : 'waiting'}"><div class="d-top"><div class="d-room">${compact ? 'Room' : 'Floor ' + esc(o.customer.floor) + ' · Room'} ${esc(o.customer.room)}</div><span class="status ${statusClass(o.status)}">${esc(o.status)}</span></div>
   <div class="d-items">${o.items.map(i => `${i.qty} × ${esc(i.name)}`).join(' · ')}</div>
@@ -269,15 +271,15 @@ function checkoutModal() {
 function readCheckout() {
   const d = Object.fromEntries(new FormData(document.querySelector('#checkout-form')).entries());
   if (!/^[0-9]{10}$/.test(d.phone || '')) { showToast('Enter a valid 10-digit mobile number'); return null; }
-  if (!/^[0-9]{3,4}$/.test(d.room || '')) { showToast('Enter your room number, e.g. 612 or 1121'); return null; }
+  if (!/^[0-9]{3,4}$/.test(d.room || '')) { showToast('Enter a valid room number'); return null; }
   d.floor = String(floorOf(d.room)); state.checkout = d; state.profile = d; persist(); return d;
 }
 const discountNow = () => CLOUD
-  ? (state.cloudGame ? computeDiscount({ packs: cartCount(), subtotal: subtotal(), hit: state.cloudGame.hit, shots: state.cloudGame.arrows }) : 0)
+  ? (state.cloudGame ? computeDiscount({ packs: cartCount(), subtotal: subtotal(), hit: state.cloudGame.hit, bullseye: state.cloudGame.bullseye, accuracy: state.cloudGame.accuracy, shots: state.cloudGame.arrows }) : 0)
   : (state.challengeId ? previewDiscount(state.challengeId) : 0);
 async function launchGame() {
   closeModal(); state.cloudGame = null;
-  if (CLOUD) { try { state.challengeId = await cloud.startGame(); } catch (e) { showToast(e.message); reviewModal(); return; } } else issueChallenge();
+  if (CLOUD) { try { const challenge = await cloud.startGame(); state.challengeId = challenge.id; } catch (e) { showToast(e.message); reviewModal(); return; } } else issueChallenge();
   const layer = document.createElement('div'); layer.className = 'game-screen';
   layer.innerHTML = `<div class="game-frame"><div class="game-stage"></div><button class="game-back" aria-label="Exit game">${ico('back')}</button></div>`;
   document.body.append(layer);
@@ -285,7 +287,7 @@ async function launchGame() {
   const leave = () => { game.destroy(); layer.remove(); };
   const game = mountGame(layer.querySelector('.game-stage'), async result => {
     let earned;
-    if (CLOUD) { try { const r = await cloud.submitGame(state.challengeId, result); state.cloudGame = r.hit == null ? null : { hit: r.hit, arrows: r.arrows }; } catch { state.cloudGame = null; } earned = discountNow(); }
+    if (CLOUD) { try { const r = await cloud.submitGame(state.challengeId, result); state.cloudGame = r.hit == null ? null : { hit: r.hit, bullseye: r.bullseye, accuracy: r.accuracy, arrows: r.arrows }; } catch { state.cloudGame = null; } earned = discountNow(); }
     else earned = submitGameResult(state.challengeId, result);
     frame.querySelector('.game-back').remove();
     frame.insertAdjacentHTML('beforeend', `<div class="game-result"><div><p class="r-title">${result.hit ? 'Well aimed' : 'Thank you for playing'}</p><div class="r-amount">${money(earned)} off</div><p class="r-sub">Applied to your reservation</p><button class="primary-btn full" id="apply-reward">Continue</button></div></div>`);
@@ -385,12 +387,13 @@ document.addEventListener('submit', e => {
   }
   else if (f.id === 'shifts-form') {
     const tm = v => v.split(':').map(Number);
-    const list = SHIFTS.map((_, i) => ({ open: tm(d['open' + i]), close: tm(d['close' + i]), dStart: tm(d['ds' + i]), dEnd: tm(d['de' + i]) }));
-    const mins = ([h, mm]) => h * 60 + mm;
-    if (list.some(x => mins(x.close) <= mins(x.open) || mins(x.dEnd) <= mins(x.dStart))) { showToast('End time must be after start time'); return; }
-    if (mins(list[1].open) < mins(list[0].close)) { showToast('Shift 2 must open after Shift 1 closes'); return; }
+    const list = [{ open: tm(d.open), close: tm(d.close), dStart: tm(d.ds), dEnd: tm(d.de) }];
     if (CLOUD) { run(() => cloud.saveShifts(list), 'Shift times saved'); return; }
     updateShifts(list); render(); showToast('Shift times saved');
+  }
+  else if (f.matches('.otp-form')) {
+    if (!CLOUD) { showToast('OTP verification requires the secure Supabase backend.'); return; }
+    run(() => cloud.verifyDeliveryOtp(f.dataset.otpOrder, d.otp), 'Order marked delivered');
   }
   else if (f.id === 'auth-form') { doAuth(d, f.querySelector('button[type=submit]')); }
 });
@@ -405,7 +408,7 @@ function authScreen() {
       ${su ? `<div class="field full-width"><label>Full name</label><input name="name" autocomplete="name" required></div>
       <div class="field full-width"><label>Mobile number</label><input name="phone" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="10-digit mobile number" autocomplete="tel" required></div>
       <div class="field"><label>Block</label><select name="block"><option value="A">Block A</option><option value="B">Block B</option></select></div>
-      <div class="field"><label>Room number</label><input name="room" inputmode="numeric" pattern="[0-9]{3,4}" maxlength="4" placeholder="e.g. 1121" required></div>` : ''}
+      <div class="field"><label>Room number</label><input name="room" inputmode="numeric" pattern="[0-9]{3,4}" maxlength="4" placeholder="Enter your room number" required></div>` : ''}
       ${!CLOUD && staff ? `<div class="field full-width"><label>${PORTAL === 'admin' ? 'Admin ID' : 'Delivery ID'}</label><input name="email" autocomplete="username" autocapitalize="characters" required></div>` : `<div class="field full-width"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>`}
       <div class="field full-width"><label>Password</label><input name="password" type="password" ${!CLOUD && staff ? '' : 'minlength="6" '}autocomplete="${su ? 'new-password' : 'current-password'}" required></div>
       ${authMsg ? `<p class="auth-msg full-width" role="status">${esc(authMsg)}</p>` : ''}
@@ -435,7 +438,7 @@ async function enterApp() {
   state.role = PORTAL; state.page = HOME[PORTAL];
   lastSig = await cloud.refreshData();
   render();
-  clearInterval(pollTimer); pollTimer = setInterval(poll, 10000);
+  clearInterval(pollTimer); pollTimer = setInterval(poll, 2000);
 }
 async function poll() {
   if (document.hidden || !sb) return;

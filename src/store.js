@@ -30,7 +30,7 @@ function load() {
   return {};
 }
 const saved = CLOUD ? { cart: load().cart } : load();   // cloud mode: menu/orders come from the server, never from this device
-if (Array.isArray(saved.shifts) && saved.shifts.length === 2) { try { setShifts(saved.shifts); } catch { /* keep defaults */ } }
+if (Array.isArray(saved.shifts) && saved.shifts.length) { try { setShifts(saved.shifts); } catch { /* keep defaults */ } }
 const menu = CLOUD ? [] : (saved.menu || seedMenu).map(m => {
   const seed = seedMenu.find(s => s.id === m.id);
   return { stock: null, ...m, image: (seed && /^[a-z-]+(-cut\.webp|-3d\.webp|-photo\.webp|\.jpg|\.png)$/.test(m.image || '')) ? seed.image : (m.image || seed?.image || null) };
