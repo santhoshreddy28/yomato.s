@@ -12,11 +12,11 @@ export function discountRange(packs) {
 }
 
 /** hit: boolean, shots: arrows used. Miss/no-play-complete => minimum of the tier; hit => max minus extra arrows. */
-export function computeDiscount({ packs, subtotal, hit, bullseye = false, accuracy = 0, shots }) {
+export function computeDiscount({ packs, subtotal, hit, bullseye = false, accuracy = 0, shots, maxDiscount = 10 }) {
   const [min, max] = discountRange(packs);
   const precision = bullseye ? 1 : (hit ? Math.max(0, Math.min(1, Number(accuracy) || 0)) : 0);
   const earned = min + Math.floor((max - min) * precision) - Math.max(0, shots - 1);
-  return Math.max(0, Math.min(subtotal, earned));
+  return Math.max(0, Math.min(subtotal, earned, Number(maxDiscount) || 0, 10));
 }
 
 /** Plausibility check of a submitted game result. Anything implausible is treated as a miss (minimum tier). */

@@ -29,7 +29,7 @@ const ico = n => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="curre
 /* ---------------- navigation ---------------- */
 const NAV = {
   student: [['menu', 'Today', 'menu'], ['orders', 'My orders', 'orders']],
-  admin: [['overview', 'Dashboard', 'grid'], ['orders', 'Orders', 'orders'], ['menu-admin', 'Menu', 'menu'], ['shifts-admin', 'Shifts', 'clock']],
+  admin: [['overview', 'Dashboard', 'grid'], ['orders', 'Orders', 'orders'], ['menu-admin', 'Menu', 'menu'], ['shifts-admin', 'Shifts', 'clock'], ['game-admin', 'Game', 'bolt']],
   delivery: [['active-deliveries', 'Active', 'bike'], ['delivery-history', 'Completed', 'clock']],
 };
 // The Student/Admin/Delivery preview switch exists only for local demo use (npm run dev, or add ?demo to the address). Students never see it.
@@ -90,7 +90,7 @@ setInterval(() => {
 }, 1000);
 function menuPage() {
   const item = todayItem();
-  if (!item) return `<section class="today closed"><div class="today-body"><p class="eyebrow"><span>Today</span></p><h1>Today’s meal will be announced soon.</h1><p class="desc">Thank you for your patience. Please check back shortly.</p></div></section>`;
+  if (!item) return `<section class="today closed"><div class="today-body"><p class="eyebrow"><span>Today</span></p><h1>We’re updating today’s menu.</h1><p class="desc">Please check back soon while we prepare the menu.</p></div></section>`;
   if (item.stock === 0) return `<section class="today closed sold-out"><div class="today-body"><p class="eyebrow"><span>Today · Fully booked</span></p><h1>All available plates have been booked.</h1><p class="desc">Thank you for your interest. The next booking window opens in:</p>${counterHTML(true)}</div></section>`;
   state.cart = { [item.id]: Math.min(state.cart[item.id] || 1, maxQty(item)) || 1 };
   const day = new Date().toLocaleDateString(undefined, { weekday: 'long' });
@@ -175,6 +175,16 @@ function adminShifts() {
   <div><button class="primary-btn" type="submit">Save times</button></div></form>
   <p class="footer-note">Times use the device clock (IST on the hostel's devices). Booking closes automatically when a window ends.</p>`;
 }
+function adminGame() {
+  const c = state.gameConfig;
+  return `${pageHead('Game controls', 'Manage access, rewards and target movement')}
+  <form id="game-form" class="shift-admin"><div class="panel"><h3>Student game settings</h3><div class="form-grid">
+    <label class="field full-width game-toggle"><span>Game available</span><input name="enabled" type="checkbox" ${c.enabled ? 'checked' : ''}> Students can play the discount game</label>
+    <div class="field"><label>Maximum discount (₹)</label><input name="maxDiscount" type="number" min="0" max="10" step="1" value="${Math.min(10, c.maxDiscount)}" required></div>
+    <div class="field"><label>Target speed (1–3.5×)</label><input name="targetSpeed" type="number" min="1" max="3.5" step="0.1" value="${c.targetSpeed}" required></div>
+  </div></div><div><button class="primary-btn" type="submit">Save game settings</button></div></form>
+  <p class="footer-note">Each student account gets one game attempt. Rewards are capped at ₹10.</p>`;
+}
 
 /* photo upload: resized in the browser so it stays small and sharp */
 let pendingImage, pendingBlob;   // pendingImage: undefined = unchanged, null = removed, string = new data URL (preview); pendingBlob = file to upload in cloud mode
@@ -210,7 +220,7 @@ const roomNum = r => parseInt(String(r).replace(/\D/g, ''), 10) || 0;
 function deliveryCard(o, compact = false) {
   const go = o.status === 'Ready for pickup' || o.status === 'Out for delivery';   // contact shown only once the order is in a delivery agent's hands
   const action = o.status === 'Ready for pickup' ? `<button class="primary-btn full" data-action="pickup" data-id="${o.id}">Picked up</button>`
-    : o.status === 'Out for delivery' ? `<form class="otp-form" data-otp-order="${esc(o.id)}"><label>Student’s 6-digit OTP</label><div><input name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required placeholder="Enter OTP"><button class="primary-btn" type="submit">Verify &amp; deliver</button></div></form>`
+    : o.status === 'Out for delivery' ? `<form class="otp-form" data-otp-order="${esc(o.id)}"><label>Student’s 2-digit OTP</label><div><input name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{2}" maxlength="2" required placeholder="Enter OTP"><button class="primary-btn" type="submit">Verify &amp; deliver</button></div></form>`
     : o.status === 'Delivered' ? '' : `<div class="muted small center">Kitchen: ${esc(o.status)}</div>`;
   return `<article class="delivery-card ${go ? '' : 'waiting'}"><div class="d-top"><div class="d-room">${compact ? 'Room' : 'Floor ' + esc(o.customer.floor) + ' · Room'} ${esc(o.customer.room)}</div><span class="status ${statusClass(o.status)}">${esc(o.status)}</span></div>
   <div class="d-items">${o.items.map(i => `${i.qty} × ${esc(i.name)}`).join(' · ')}</div>
@@ -229,13 +239,13 @@ function deliveryPage() {
     ? list.sort((x, y) => roomNum(y.customer.room) - roomNum(x.customer.room)).map(o => deliveryCard(o, true)).join('')   // rooms: highest first
     : '<div class="none">No orders</div>'}</div>`;
   const sections = floors.map(f => { const here = active.filter(o => floorN(o) === f); return `<section class="floor-group"><div class="floor-head"><h3>Floor ${f}</h3><span>${here.length} ${here.length === 1 ? 'order' : 'orders'}</span></div><div class="block-cols">${['A', 'B'].map(b => col(b, here.filter(o => o.customer.block === b))).join('')}</div></section>`; }).join('');
-  return `${pageHead('Deliveries', 'Top floor first · Block A left, Block B right · highest room first')}${sections || empty('No active deliveries right now.')}`;
+  return `${pageHead('Deliveries', 'Top floor first · Block A and B · highest room first')}${sections || empty('No active deliveries right now.')}`;
 }
 
 /* ---------------- shell ---------------- */
 function pageContent() {
   if (state.role === 'student') return state.page === 'orders' ? studentOrders() : state.page === 'profile' ? profilePage() : menuPage();
-  if (state.role === 'admin') return state.page === 'orders' ? adminOrders() : state.page === 'menu-admin' ? adminMenu() : state.page === 'shifts-admin' ? adminShifts() : adminOverview();
+  if (state.role === 'admin') return state.page === 'orders' ? adminOrders() : state.page === 'menu-admin' ? adminMenu() : state.page === 'shifts-admin' ? adminShifts() : state.page === 'game-admin' ? adminGame() : adminOverview();
   return deliveryPage();
 }
 function render() {
@@ -265,8 +275,9 @@ const modalHead = t => `<div class="modal-head"><h2>${t}</h2><button class="clos
 /* ---------------- cart & checkout ---------------- */
 function checkoutModal() {
   if (!state.checkoutKey) state.checkoutKey = uid();   // one key per order attempt => submit can never create two orders
+  const playLabel = state.gamePlayed ? 'Your game chance has been used' : !state.gameConfig.enabled ? 'Game temporarily unavailable' : 'Play for a surprise discount';
   openModal(`${modalHead('Where shall we bring it?')}<form id="checkout-form" class="form-grid">${fields(state.profile)}
-  <div class="field full-width"><button class="primary-btn full" type="submit">Play for a surprise discount</button><button class="secondary-btn full" type="button" data-action="skip-game">Skip and continue</button></div></form>`, 'checkout');
+  <div class="field full-width"><button class="primary-btn full" type="submit" ${state.gamePlayed || !state.gameConfig.enabled ? 'disabled' : ''}>${playLabel}</button><button class="secondary-btn full" type="button" data-action="skip-game">Continue without playing</button></div></form>`, 'checkout');
 }
 function readCheckout() {
   const d = Object.fromEntries(new FormData(document.querySelector('#checkout-form')).entries());
@@ -275,11 +286,12 @@ function readCheckout() {
   d.floor = String(floorOf(d.room)); state.checkout = d; state.profile = d; persist(); return d;
 }
 const discountNow = () => CLOUD
-  ? (state.cloudGame ? computeDiscount({ packs: cartCount(), subtotal: subtotal(), hit: state.cloudGame.hit, bullseye: state.cloudGame.bullseye, accuracy: state.cloudGame.accuracy, shots: state.cloudGame.arrows }) : 0)
+  ? (state.cloudGame ? computeDiscount({ packs: cartCount(), subtotal: subtotal(), hit: state.cloudGame.hit, bullseye: state.cloudGame.bullseye, accuracy: state.cloudGame.accuracy, shots: state.cloudGame.arrows, maxDiscount: state.gameConfig.maxDiscount }) : 0)
   : (state.challengeId ? previewDiscount(state.challengeId) : 0);
 async function launchGame() {
+  if (state.gamePlayed || !state.gameConfig.enabled) { showToast(state.gamePlayed ? 'You have already used your game chance.' : 'The game is temporarily unavailable.'); reviewModal(); return; }
   closeModal(); state.cloudGame = null;
-  if (CLOUD) { try { const challenge = await cloud.startGame(); state.challengeId = challenge.id; } catch (e) { showToast(e.message); reviewModal(); return; } } else issueChallenge();
+  if (CLOUD) { try { const challenge = await cloud.startGame(); state.challengeId = challenge.id; state.gamePlayed = true; state.gameConfig = { ...state.gameConfig, maxDiscount: challenge.max_discount, targetSpeed: challenge.target_speed }; } catch (e) { showToast(e.message); if (/already used/i.test(e.message)) state.gamePlayed = true; reviewModal(); return; } } else { try { issueChallenge(); } catch (e) { showToast(e.message); reviewModal(); return; } }
   const layer = document.createElement('div'); layer.className = 'game-screen';
   layer.innerHTML = `<div class="game-frame"><div class="game-stage"></div><button class="game-back" aria-label="Exit game">${ico('back')}</button></div>`;
   document.body.append(layer);
@@ -292,7 +304,7 @@ async function launchGame() {
     frame.querySelector('.game-back').remove();
     frame.insertAdjacentHTML('beforeend', `<div class="game-result"><div><p class="r-title">${result.hit ? 'Well aimed' : 'Thank you for playing'}</p><div class="r-amount">${money(earned)} off</div><p class="r-sub">Applied to your reservation</p><button class="primary-btn full" id="apply-reward">Continue</button></div></div>`);
     frame.querySelector('#apply-reward').addEventListener('click', () => { leave(); reviewModal(); });
-  });
+  }, { targetSpeed: state.gameConfig.targetSpeed });
   layer.querySelector('.game-back').addEventListener('click', () => { leave(); state.challengeId = null; state.cloudGame = null; reviewModal(); });
 }
 function reviewModal() {
@@ -391,6 +403,11 @@ document.addEventListener('submit', e => {
     if (CLOUD) { run(() => cloud.saveShifts(list), 'Shift times saved'); return; }
     updateShifts(list); render(); showToast('Shift times saved');
   }
+  else if (f.id === 'game-form') {
+    const config = { enabled: f.elements.enabled.checked, maxDiscount: Math.min(10, Math.max(0, Number(d.maxDiscount))), targetSpeed: Math.min(3.5, Math.max(1, Number(d.targetSpeed))) };
+    if (CLOUD) { run(() => cloud.saveGameConfig(config), 'Game settings saved'); return; }
+    state.gameConfig = config; persist(); render(); showToast('Game settings saved');
+  }
   else if (f.matches('.otp-form')) {
     if (!CLOUD) { showToast('OTP verification requires the secure Supabase backend.'); return; }
     run(() => cloud.verifyDeliveryOtp(f.dataset.otpOrder, d.otp), 'Order marked delivered');
@@ -435,6 +452,7 @@ async function enterApp() {
     return;
   }
   state.profile = { name: p.name, phone: p.phone, block: p.block || 'A', floor: p.floor, room: p.room, email: p.email };
+  state.gamePlayed = p.gamePlayed;
   state.role = PORTAL; state.page = HOME[PORTAL];
   lastSig = await cloud.refreshData();
   render();

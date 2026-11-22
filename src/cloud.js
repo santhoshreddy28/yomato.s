@@ -21,7 +21,7 @@ export async function signInGuest() { fail(await sb.auth.signInAnonymously()); }
 export async function loadProfile() {
   const s = await getSession(); if (!s) return null;
   const p = fail(await sb.from('profiles').select('*').eq('id', s.user.id).single());
-  return { role: p.role, name: p.full_name, phone: p.phone, block: p.block, floor: String(p.floor), room: p.room, email: s.user.email };
+  return { role: p.role, name: p.full_name, phone: p.phone, block: p.block, floor: String(p.floor), room: p.room, email: s.user.email, gamePlayed: !!p.game_played };
 }
 
 /* ---- reading ---- */
@@ -37,12 +37,13 @@ const mapOrder = (o, otps = {}) => ({
 /** Loads menu, shift times and orders into `state`. Returns a signature so callers can tell if anything changed. */
 export async function refreshData() {
   fail(await sb.rpc('sync_daily_stock'));
-  const [menu, shifts, orders, booking, otpResult] = await Promise.all([
+  const [menu, shifts, orders, booking, otpResult, gameConfigResult] = await Promise.all([
     sb.from('menu_items').select('*').order('created_at').order('name'),
     sb.from('shift_config').select('*').order('id'),
     sb.from('orders').select('*, order_items(*)').order('created_at', { ascending: false }).limit(300),
     sb.rpc('get_booking_info'),
     state.role === 'student' ? sb.rpc('get_my_delivery_otps') : Promise.resolve({ data: [], error: null }),
+    sb.rpc('get_game_config'),
   ]);
   const info = fail(booking);
   setServerClock(Date.parse(info.server_now) - Date.now());
@@ -51,11 +52,13 @@ export async function refreshData() {
   state.menu = fail(menu).map(mapItem);
   const otpMap = Object.fromEntries(fail(otpResult).map(x => [x.order_id, x.otp]));
   state.orders = fail(orders).map(o => mapOrder(o, otpMap));
-  return JSON.stringify([state.menu, state.orders, SHIFTS.map(s => s.book + s.del)]);
+  state.gameConfig = fail(gameConfigResult);
+  return JSON.stringify([state.menu, state.orders, state.gameConfig, SHIFTS.map(s => s.book + s.del)]);
 }
 
 /* ---- ordering ---- */
-export async function startGame() { const c = fail(await sb.rpc('start_game')); return typeof c === 'string' ? { id: c } : c; }
+export async function startGame() { return fail(await sb.rpc('start_game')); }
+export async function saveGameConfig(config) { return fail(await sb.rpc('save_game_config', { p_enabled: config.enabled, p_max_discount: config.maxDiscount, p_target_speed: config.targetSpeed })); }
 export const submitGame = (id, { shots, playMs, shotData }) => sb.rpc('submit_game', { p_id: id, p_shots: shotData, p_played_ms: Math.round(playMs) }).then(fail);
 export async function placeOrder({ key, items, customer, challengeId }) {
   return fail(await sb.rpc('place_order', {

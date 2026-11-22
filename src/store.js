@@ -45,13 +45,15 @@ export const state = {
   menu, orders: saved.orders || [], cart: saved.cart || {},
   profile: saved.profile || { name: '', phone: '', block: 'A', floor: '1', room: '' },
   challenges: saved.challenges || {},
+  gamePlayed: !!saved.gamePlayed || Object.keys(saved.challenges || {}).length > 0,
+  gameConfig: saved.gameConfig || { enabled: true, maxDiscount: 10, targetSpeed: 2.4 },
   checkout: null,        // delivery details of the order being placed
   checkoutKey: null,     // idempotency key for the order being placed
   challengeId: null,     // game challenge for the order being placed
   placing: false,
 };
 
-const snapshot = () => JSON.stringify(CLOUD ? { cart: state.cart } : { menu: state.menu, orders: state.orders, cart: state.cart, profile: state.profile, challenges: state.challenges, shifts: shiftConfig() });
+const snapshot = () => JSON.stringify(CLOUD ? { cart: state.cart } : { menu: state.menu, orders: state.orders, cart: state.cart, profile: state.profile, challenges: state.challenges, gamePlayed: state.gamePlayed, gameConfig: state.gameConfig, shifts: shiftConfig() });
 let persistTimer = 0;
 export function persist() {
   clearTimeout(persistTimer);
@@ -74,11 +76,13 @@ export function isAvailable(item) { return item.available && (item.stock == null
 
 // ---- Game challenge ledger (trusted side) -------------------------------------------------------------
 export function issueChallenge() {
+  if (state.gamePlayed || !state.gameConfig.enabled) throw new Error(state.gamePlayed ? 'You have already used your game chance.' : 'The game is temporarily unavailable.');
   const now = Date.now();
   for (const [k, c] of Object.entries(state.challenges)) if (now - c.issuedAt > 24 * 3600e3) delete state.challenges[k];
   const id = uid();
   state.challenges[id] = { id, issuedAt: now, expiresAt: now + CHALLENGE_TTL, result: null, used: false };
   state.challengeId = id;
+  state.gamePlayed = true;
   persist();
   return id;
 }
@@ -93,7 +97,7 @@ export function submitGameResult(id, raw) {
 export function previewDiscount(id) {
   const c = state.challenges[id];
   if (!c || c.used || !c.result || Date.now() > c.expiresAt) return 0;
-  return computeDiscount({ packs: cartCount(), subtotal: subtotal(), ...c.result });
+  return computeDiscount({ packs: cartCount(), subtotal: subtotal(), ...c.result, maxDiscount: state.gameConfig.maxDiscount });
 }
 
 // ---- Orders ---------------------------------------------------------------------------------------------

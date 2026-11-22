@@ -5,7 +5,7 @@ const ARROW_SPEED = 14;   // fixed: drag only chooses direction, never power
 const W = 360, H = 640, GOLD = '#e7be5a', IVORY = '#f6eedb', LEAF = '#1f5c45', TARGET_R = 38;
 
 /** Mounts the game into `frame`. Calls onEnd({hit, shots, playMs}) once. Returns { destroy }. */
-export function mountGame(frame, onEnd) {
+export function mountGame(frame, onEnd, { targetSpeed = 2.4 } = {}) {
   frame.innerHTML = `<canvas aria-label="Archery game"></canvas><div class="g-timer"><i></i></div><div class="g-arrows" aria-label="Arrows left"></div><div class="g-hint">Drag to aim · release to shoot</div>`;
   const canvas = frame.querySelector('canvas'), ctx = canvas.getContext('2d');
   const timerBar = frame.querySelector('.g-timer i'), pips = frame.querySelector('.g-arrows'), hint = frame.querySelector('.g-hint');
@@ -26,8 +26,8 @@ export function mountGame(frame, onEnd) {
 
   // Target: sweeps across the top with a changing rhythm.
   const enemy = () => ({
-    x: W / 2 + Math.sin(t * 0.0011) * 100 + Math.sin(t * 0.0026 + 1) * 22,
-    y: 130 + Math.sin(t * 0.0009) * 8,
+    x: W / 2 + Math.sin(t * 0.00055 * targetSpeed) * 100 + Math.sin(t * 0.0013 * targetSpeed + 1) * 22,
+    y: 130 + Math.sin(t * 0.00045 * targetSpeed) * 8,
   });
 
   function line(x1, y1, x2, y2, c, w = 3) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.strokeStyle = c; ctx.lineWidth = w; ctx.stroke(); }
