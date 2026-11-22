@@ -14,7 +14,7 @@ export function arrowRewardsForScores(ringScores = [], minDiscount = 4, maxDisco
   const rangePerArrow = (max - min) / MAX_ARROWS;
   return Array.from({ length: MAX_ARROWS }, (_, i) => {
     const ring = Math.max(0, Math.min(5, Math.floor(Number(ringScores[i]) || 0)));
-    return ring ? minPerArrow + rangePerArrow * ((ring - 1) / 4) : 0;
+    return ring ? minPerArrow + rangePerArrow * (ring / 5) : 0;
   });
 }
 
