@@ -54,6 +54,7 @@ h1,h2,h3,.brand,.stat .value{font-family:var(--head)}
 .footer-note{color:var(--muted);font-size:12px;margin:14px 0 0;line-height:1.5}
 .order-card,.panel,.stat,.delivery-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
 .order-card{padding:18px 20px;margin-bottom:12px}
+.cancel-order-btn{margin-top:12px;padding:9px 14px;border:1px solid var(--red);border-radius:99px;background:transparent;color:var(--red);font-size:13px;font-weight:700}.cancel-order-btn:hover{background:rgba(212,52,44,.08)}
 .order-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.order-id{font:800 14px var(--head)}
 .order-items{color:var(--soft);font-size:15px;line-height:1.5}
 .order-shift{margin-top:8px;font-size:12px;color:var(--soft);font-weight:600}

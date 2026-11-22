@@ -98,13 +98,13 @@ function menuPage() {
   <div class="today-body"><p class="eyebrow"><span>Today’s meal · ${day}</span></p><h1>${esc(item.name)}</h1><p class="desc">${esc(item.desc)}</p><div class="orn" aria-hidden="true"><i></i></div>
   <div id="order-box">${item.stock != null && item.stock <= 5 ? `<div class="stock-warning" role="status">ONLY ${item.stock} LEFT</div>` : ''}${orderBox(item)}</div></div></section>`;
 }
-function orderCard(o) {
+function orderCard(o, allowCancel = false) {
   return `<div class="order-card"><div class="order-head"><span class="order-id">Ref. ${esc(o.id)}</span><span class="status ${statusClass(o.status)}">${esc(o.status)}</span></div>
   <div class="order-items">${o.items.map(i => `${i.qty} × ${esc(i.name)}`).join(' · ')}</div>
   ${o.shift ? `<div class="order-shift">Delivery between <b>${esc(o.shift.delivery)}</b></div>` : ''}
   ${o.deliveryOtp ? `<div class="order-otp">Delivery OTP <strong>${esc(o.deliveryOtp)}</strong></div>` : ''}
   <div class="order-meta"><span>Block ${esc(o.customer.block)} · Room ${esc(o.customer.room)}</span><span>${new Date(o.createdAt).toLocaleString()}</span>
-  <strong>${o.discount ? `<s>${money(o.subtotal)}</s> ` : ''}${money(o.total)}</strong></div></div>`;
+  <strong>${o.discount ? `<s>${money(o.subtotal)}</s> ` : ''}${money(o.total)}</strong></div>${allowCancel && ['Placed', 'Accepted', 'Preparing', 'Ready for pickup'].includes(o.status) ? `<button class="cancel-order-btn" data-action="cancel-order" data-id="${esc(o.id)}">Cancel order</button>` : ''}</div>`;
 }
 const STEP = { Placed: 0, Accepted: 0, Preparing: 1, 'Ready for pickup': 1, 'Out for delivery': 2, Delivered: 3 };
 function tracker(o) {
@@ -114,7 +114,7 @@ function tracker(o) {
 }
 function studentOrders() {
   const mine = CLOUD ? state.orders : state.orders.filter(o => !state.profile.phone || o.customer.phone === state.profile.phone);
-  return `<div class="wrap">${pageHead('My orders', 'Your meals, from our kitchen to your door.')}${mine.length ? mine.map(o => orderCard(o).replace(/<\/div>$/, tracker(o) + '</div>')).join('') : empty('Your reservations will appear here.')}</div>`;
+  return `<div class="wrap">${pageHead('My orders', 'Your meals, from our kitchen to your door.')}${mine.length ? mine.map(o => orderCard(o, true).replace(/<\/div>$/, tracker(o) + '</div>')).join('') : empty('Your reservations will appear here.')}</div>`;
 }
 function fields(p) {
   return `<div class="field full-width"><label>Full name</label><input name="name" value="${esc(p.name)}" placeholder="Your name" autocomplete="name" required></div>
@@ -220,7 +220,7 @@ const roomNum = r => parseInt(String(r).replace(/\D/g, ''), 10) || 0;
 function deliveryCard(o, compact = false) {
   const go = o.status === 'Ready for pickup' || o.status === 'Out for delivery';   // contact shown only once the order is in a delivery agent's hands
   const action = o.status === 'Ready for pickup' ? `<button class="primary-btn full" data-action="pickup" data-id="${o.id}">Picked up</button>`
-    : o.status === 'Out for delivery' ? `<form class="otp-form" data-otp-order="${esc(o.id)}"><label>Student’s 2-digit OTP</label><div><input name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{2}" maxlength="2" required placeholder="Enter OTP"><button class="primary-btn" type="submit">Verify &amp; deliver</button></div></form>`
+    : o.status === 'Out for delivery' ? `<form class="otp-form" data-otp-order="${esc(o.id)}"><label>Student’s 3-digit OTP</label><div><input name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{3}" maxlength="3" required placeholder="Enter OTP"><button class="primary-btn" type="submit">Verify &amp; deliver</button></div></form>`
     : o.status === 'Delivered' ? '' : `<div class="muted small center">Kitchen: ${esc(o.status)}</div>`;
   return `<article class="delivery-card ${go ? '' : 'waiting'}"><div class="d-top"><div class="d-room">${compact ? 'Room' : 'Floor ' + esc(o.customer.floor) + ' · Room'} ${esc(o.customer.room)}</div><span class="status ${statusClass(o.status)}">${esc(o.status)}</span></div>
   <div class="d-items">${o.items.map(i => `${i.qty} × ${esc(i.name)}`).join(' · ')}</div>
@@ -367,6 +367,7 @@ document.addEventListener('click', async e => {
     case 'admin-filter': adminFilter = b.dataset.filter; render(); break;
     case 'pickup': if (CLOUD) await run(() => cloud.setStatus(id, 'Out for delivery')); else { updateOrder(id, { status: 'Out for delivery' }); render(); } break;
     case 'deliver': if (CLOUD) await run(() => cloud.setStatus(id, 'Delivered'), 'Marked delivered'); else { updateOrder(id, { status: 'Delivered' }); render(); showToast('Marked delivered'); } break;
+    case 'cancel-order': if (confirm('Cancel this order?')) { if (CLOUD) await run(() => cloud.cancelMyOrder(id), 'Order cancelled'); else { updateOrder(id, { status: 'Cancelled' }); render(); showToast('Order cancelled'); } } break;
     case 'signout': if (CLOUD) await cloud.signOut(); else { staffLock(PORTAL); authMsg = ''; authScreen(); } break;
     case 'auth-mode': authMode = authMode === 'signin' ? 'signup' : 'signin'; authMsg = ''; authScreen(); break;
   }
