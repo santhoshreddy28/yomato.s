@@ -105,7 +105,12 @@ h1,h2,h3,.brand,.stat .value{font-family:var(--head)}
 .file-btn{display:inline-flex;align-items:center;gap:8px;margin:0;cursor:pointer;padding:11px 16px}.file-btn .ico{width:17px;height:17px}
 .shift-admin{display:grid;gap:12px;max-width:640px}
 .shift-admin .field input{padding:12px}
-.game-toggle{display:flex;flex-direction:row;align-items:center;gap:12px;color:var(--soft);font-weight:600}.game-toggle input{width:20px;height:20px;accent-color:var(--accent)}
+.game-settings-inline{display:grid;gap:14px;max-width:900px;padding:0 0 22px;margin:0 0 24px;border-bottom:1px solid var(--line)}
+.game-settings-inline h2{margin:0;font-size:18px}
+.game-settings-fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:end}
+.game-settings-fields .field input{padding:12px}
+.game-toggle{display:flex;align-items:center;gap:10px;min-height:48px;color:var(--soft);font-size:14px;font-weight:600}
+.game-toggle input{width:20px;height:20px;accent-color:var(--accent)}
 .game-actions-only{display:grid;grid-template-columns:repeat(2,minmax(220px,260px));gap:16px}
 .game-actions-only .secondary-btn{min-height:60px;margin:0;border-radius:18px}
 
@@ -167,6 +172,8 @@ h1,h2,h3,.brand,.stat .value{font-family:var(--head)}
   .modal-backdrop{align-items:end;padding:0}.modal{width:100%;border-radius:28px 28px 0 0;max-height:92dvh;padding-bottom:calc(24px + var(--safe-b))}
   .form-grid{gap:12px}.stat-grid{grid-template-columns:repeat(2,1fr)}.two-col{grid-template-columns:1fr}
   .game-actions-only{grid-template-columns:minmax(0,1fr)}
+  .game-settings-fields{grid-template-columns:1fr 1fr}
+  .game-settings-fields .game-toggle{grid-column:1/-1}
   .bar-row{grid-template-columns:90px 1fr 28px}.delivery-card{max-width:none}
   .toast{bottom:calc(92px + var(--safe-b))}
 }

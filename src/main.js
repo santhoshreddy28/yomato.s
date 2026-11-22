@@ -180,6 +180,12 @@ function adminShifts() {
 }
 function adminGame() {
   return `${pageHead('Game controls')}
+  <form id="game-form" class="game-settings-inline"><h2>Game settings</h2><div class="game-settings-fields">
+    <label class="game-toggle"><input name="enabled" type="checkbox" ${state.gameConfig.enabled ? 'checked' : ''}> Students can play</label>
+    <div class="field"><label>Minimum discount (₹)</label><input name="minDiscount" type="number" min="0" step="1" value="${state.gameConfig.minDiscount}" required></div>
+    <div class="field"><label>Maximum discount (₹)</label><input name="maxDiscount" type="number" min="0" step="1" value="${state.gameConfig.maxDiscount}" required></div>
+    <div class="field"><label>Target speed (1–3.5×)</label><input name="targetSpeed" type="number" min="1" max="3.5" step="0.1" value="${state.gameConfig.targetSpeed}" required></div>
+  </div><button class="primary-btn" type="submit">Save game settings</button></form>
   <div class="game-actions-only"><button class="secondary-btn" type="button" data-action="trial-game">Play a trial game</button>
   <button class="secondary-btn" type="button" data-action="replay-all-students">Replay for all played students</button></div>`;
 }
