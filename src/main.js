@@ -1,4 +1,4 @@
-import { state, STATUSES, AGENTS, money, cartEntries, cartCount, subtotal, uid, persist, maxQty, issueChallenge, submitGameResult, previewDiscount, placeOrder, updateOrder, saveItem, addItem, removeItem, updateShifts } from './store.js';
+import { state, STATUSES, AGENTS, money, cartEntries, cartCount, subtotal, uid, persist, maxQty, issueChallenge, submitGameResult, previewDiscount, placeOrder, updateOrder, saveItem, addItem, removeItem, updateShifts, syncGameCycle } from './store.js';
 import '@fontsource-variable/fraunces';
 import '@fontsource-variable/dm-sans';
 import { mountGame } from './game.js';
@@ -77,12 +77,15 @@ function counterHTML(nextOnly = false) {
 }
 function orderBox(item) {
   const qty = state.cart[item.id] || 1, can = !!bookingShift();
+  const shift = shiftState(), completed = !shift.open && shift.key === 'n1t' && !DEMO;
+  const closedMessage = completed ? `<p class="booking-complete" role="status">Today’s booking is completed. Please check back during the next shift.</p>` : '';
   return `${counterHTML()}<div class="today-row"><div class="price-wrap"><span class="price">${money(item.price * qty)}</span><small>${qty > 1 ? qty + ' plates' : 'One plate'}</small></div><div class="qty-control"><button data-action="qty" data-id="${item.id}" data-delta="-1" aria-label="One less" ${qty <= 1 ? 'disabled' : ''}>−</button><span>${qty}</span><button data-action="qty" data-id="${item.id}" data-delta="1" aria-label="One more" ${qty >= maxQty(item) ? 'disabled' : ''}>+</button></div></div>
-  <button class="primary-btn full big" data-action="checkout" ${can ? '' : 'disabled'}>${can ? 'Reserve this meal' : 'Reservations closed'}</button>`;
+  ${closedMessage}<button class="primary-btn full big" data-action="checkout" ${can ? '' : 'disabled'}>${can ? 'Reserve this meal' : completed ? 'Booking completed' : 'Reservations closed'}</button>`;
 }
 // Live counter: ticks every second; the section re-renders only when a booking window opens or closes.
 let lastShiftKey = shiftState().key;
 setInterval(() => {
+  if (!CLOUD && syncGameCycle()) { lastShiftKey = shiftState().key; if (state.page === 'menu') refreshCart(); else render(); }
   const el = document.getElementById('counter'); if (!el) return;
   const st = shiftState();
   if (st.key !== lastShiftKey) { lastShiftKey = st.key; refreshCart(); return; }
@@ -183,7 +186,9 @@ function adminGame() {
     <div class="field"><label>Maximum discount (₹)</label><input name="maxDiscount" type="number" min="4" max="9" step="1" value="${Math.min(9, Math.max(4, c.maxDiscount))}" required></div>
     <div class="field"><label>Target speed (1–3.5×)</label><input name="targetSpeed" type="number" min="1" max="3.5" step="0.1" value="${c.targetSpeed}" required></div>
   </div></div><div><button class="primary-btn" type="submit">Save game settings</button></div></form>
-  <p class="footer-note">Each student account gets one game attempt. Every game reward is between ₹4 and ₹9.</p>`;
+  <p class="footer-note">Each student account gets one game attempt per shift. Every game reward is between ₹4 and ₹9.</p>
+  <form id="game-replay-form" class="shift-admin"><div class="panel"><h3>Give a student another play</h3><div class="field"><label>Student’s registered mobile number</label><input name="phone" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="10-digit mobile number" required></div>
+  <p class="footer-note">This adds one extra game chance to that student’s account.</p></div><div><button class="secondary-btn" type="submit">Allow this student to play again</button></div></form>`;
 }
 
 /* photo upload: resized in the browser so it stays small and sharp */
@@ -275,9 +280,11 @@ const modalHead = t => `<div class="modal-head"><h2>${t}</h2><button class="clos
 /* ---------------- cart & checkout ---------------- */
 function checkoutModal() {
   if (!state.checkoutKey) state.checkoutKey = uid();   // one key per order attempt => submit can never create two orders
-  const playLabel = state.gamePlayed ? 'Your game chance has been used' : !state.gameConfig.enabled ? 'Game temporarily unavailable' : 'Play for a surprise discount';
+  const previousDiscount = state.pendingGameReward ? discountNow() : 0;
+  const canPlayNow = !state.gamePlayed && state.gameConfig.enabled;
+  const playLabel = state.pendingGameReward && !canPlayNow ? `Previous discount · ${money(previousDiscount)}` : state.gamePlayed ? 'Your game chance has been used' : !state.gameConfig.enabled ? 'Game temporarily unavailable' : 'Play for a surprise discount';
   openModal(`${modalHead('Where shall we bring it?')}<form id="checkout-form" class="form-grid">${fields(state.profile)}
-  <div class="field full-width"><button class="primary-btn full" type="submit" ${state.gamePlayed || !state.gameConfig.enabled ? 'disabled' : ''}>${playLabel}</button><button class="secondary-btn full" type="button" data-action="skip-game">Continue without playing</button></div></form>`, 'checkout');
+  <div class="field full-width">${state.pendingGameReward && canPlayNow ? `<p class="previous-reward-note">Your previous ${money(previousDiscount)} discount is saved. You may use it now or play this shift’s game.</p>` : ''}<button class="primary-btn full" type="submit" ${canPlayNow ? '' : 'disabled'}>${playLabel}</button><button class="secondary-btn full" type="button" data-action="skip-game">${state.pendingGameReward ? `Continue with previous ${money(previousDiscount)} discount` : 'Continue without playing'}</button></div></form>`, 'checkout');
 }
 function readCheckout() {
   const d = Object.fromEntries(new FormData(document.querySelector('#checkout-form')).entries());
@@ -285,13 +292,20 @@ function readCheckout() {
   if (!/^[0-9]{3,4}$/.test(d.room || '')) { showToast('Enter a valid room number'); return null; }
   d.floor = String(floorOf(d.room)); state.checkout = d; state.profile = d; persist(); return d;
 }
-const discountNow = () => CLOUD
-  ? (state.cloudGame ? computeDiscount({ packs: cartCount(), subtotal: subtotal(), hit: state.cloudGame.hit, bullseye: state.cloudGame.bullseye, accuracy: state.cloudGame.accuracy, shots: state.cloudGame.arrows, maxDiscount: state.gameConfig.maxDiscount }) : 0)
-  : (state.challengeId ? previewDiscount(state.challengeId) : 0);
+const discountNow = () => {
+  if (CLOUD) {
+    const reward = state.cloudGame || state.pendingGameReward;
+    if (reward?.discount != null) return Math.min(subtotal(), Number(reward.discount));
+    return reward ? computeDiscount({ packs: cartCount(), subtotal: subtotal(), hit: reward.hit, bullseye: reward.bullseye, accuracy: reward.accuracy, shots: reward.arrows, maxDiscount: reward.maxDiscount ?? state.gameConfig.maxDiscount }) : 0;
+  }
+  const challengeId = state.challengeId || state.pendingGameReward?.id;
+  if (challengeId && state.pendingGameReward?.id === challengeId && state.pendingGameReward.discount != null) return Math.min(subtotal(), Number(state.pendingGameReward.discount));
+  return challengeId ? previewDiscount(challengeId) : 0;
+};
 async function launchGame() {
   if (state.gamePlayed || !state.gameConfig.enabled) { showToast(state.gamePlayed ? 'You have already used your game chance.' : 'The game is temporarily unavailable.'); reviewModal(); return; }
   closeModal(); state.cloudGame = null;
-  if (CLOUD) { try { const challenge = await cloud.startGame(); state.challengeId = challenge.id; state.gamePlayed = true; state.gameConfig = { ...state.gameConfig, maxDiscount: challenge.max_discount, targetSpeed: challenge.target_speed }; } catch (e) { showToast(e.message); if (/already used/i.test(e.message)) state.gamePlayed = true; reviewModal(); return; } } else { try { issueChallenge(); } catch (e) { showToast(e.message); reviewModal(); return; } }
+  if (CLOUD) { try { const challenge = await cloud.startGame(); state.challengeId = challenge.id; state.challengeMaxDiscount = Number(challenge.max_discount); state.gamePlayed = true; state.gameConfig = { ...state.gameConfig, maxDiscount: challenge.max_discount, targetSpeed: challenge.target_speed }; } catch (e) { showToast(e.message); if (/already used/i.test(e.message)) state.gamePlayed = true; reviewModal(); return; } } else { try { issueChallenge(); } catch (e) { showToast(e.message); reviewModal(); return; } }
   const layer = document.createElement('div'); layer.className = 'game-screen';
   layer.innerHTML = `<div class="game-frame"><div class="game-stage"></div><button class="game-back" aria-label="Exit game">${ico('back')}</button></div>`;
   document.body.append(layer);
@@ -299,7 +313,7 @@ async function launchGame() {
   const leave = () => { game.destroy(); layer.remove(); };
   const game = mountGame(layer.querySelector('.game-stage'), async result => {
     let earned;
-    if (CLOUD) { try { const r = await cloud.submitGame(state.challengeId, result); state.cloudGame = r.hit == null ? null : { hit: r.hit, bullseye: r.bullseye, accuracy: r.accuracy, arrows: r.arrows }; } catch { state.cloudGame = null; } earned = discountNow(); }
+    if (CLOUD) { try { const r = await cloud.submitGame(state.challengeId, result); state.cloudGame = r.hit == null ? null : { hit: r.hit, bullseye: r.bullseye, accuracy: r.accuracy, arrows: r.arrows, maxDiscount: state.challengeMaxDiscount ?? state.gameConfig.maxDiscount }; } catch { state.cloudGame = null; } earned = discountNow(); }
     else earned = submitGameResult(state.challengeId, result);
     frame.querySelector('.game-back').remove();
     frame.insertAdjacentHTML('beforeend', `<div class="game-result"><div><p class="r-title">${result.hit ? 'Well aimed' : 'Thank you for playing'}</p><div class="r-amount">${money(earned)} off</div><p class="r-sub">Applied to your reservation</p><button class="primary-btn full" id="apply-reward">Continue</button></div></div>`);
@@ -321,13 +335,13 @@ async function submitOrder(btn) {
   if (CLOUD) {   // the server recomputes prices, stock, shift and discount; a retry with the same key returns the same order
     const label = btn.dataset.label;
     try {
-      await cloud.placeOrder({ key: state.checkoutKey, items: cartEntries().map(({ item, qty }) => ({ id: item.id, qty })), customer: state.checkout, challengeId: state.cloudGame ? state.challengeId : null });
-      state.cart = {}; state.challengeId = null; state.cloudGame = null; state.checkoutKey = null; state.profile = { ...state.profile, ...state.checkout }; persist();
+      await cloud.placeOrder({ key: state.checkoutKey, items: cartEntries().map(({ item, qty }) => ({ id: item.id, qty })), customer: state.checkout, challengeId: state.challengeId || state.pendingGameReward?.id || null });
+      state.cart = {}; state.challengeId = null; state.cloudGame = null; state.pendingGameReward = null; state.challengeMaxDiscount = null; state.checkoutKey = null; state.profile = { ...state.profile, ...state.checkout }; persist();
       lastSig = await cloud.refreshData(); state.placing = false; closeModal(); state.page = 'orders'; render(); showToast('Your meal is reserved. Thank you.');
     } catch (e) { state.placing = false; btn.disabled = false; btn.textContent = label; showToast(e.message); }
     return;
   }
-  const r = placeOrder({ key: state.checkoutKey, customer: { ...state.checkout }, challengeId: state.challengeId });
+  const r = placeOrder({ key: state.checkoutKey, customer: { ...state.checkout }, challengeId: state.challengeId || state.pendingGameReward?.id });
   state.placing = false;
   if (!r.ok) { btn.disabled = false; showToast(r.error); closeModal(); render(); return; }
   closeModal(); state.role = 'student'; state.page = 'orders'; render(); showToast(r.duplicate ? 'Already reserved' : 'Your meal is reserved. Thank you.');
@@ -408,6 +422,10 @@ document.addEventListener('submit', e => {
     const config = { enabled: f.elements.enabled.checked, maxDiscount: Math.min(9, Math.max(4, Number(d.maxDiscount))), targetSpeed: Math.min(3.5, Math.max(1, Number(d.targetSpeed))) };
     if (CLOUD) { run(() => cloud.saveGameConfig(config), 'Game settings saved'); return; }
     state.gameConfig = config; persist(); render(); showToast('Game settings saved');
+  }
+  else if (f.id === 'game-replay-form') {
+    if (!CLOUD) { showToast('Student game access requires the connected portal.'); return; }
+    run(() => cloud.grantGameReplay(d.phone), 'Another game chance is available for that student');
   }
   else if (f.matches('.otp-form')) {
     if (!CLOUD) { showToast('OTP verification requires the secure Supabase backend.'); return; }

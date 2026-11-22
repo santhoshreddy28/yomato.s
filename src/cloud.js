@@ -37,13 +37,14 @@ const mapOrder = (o, otps = {}) => ({
 /** Loads menu, shift times and orders into `state`. Returns a signature so callers can tell if anything changed. */
 export async function refreshData() {
   fail(await sb.rpc('sync_daily_stock'));
-  const [menu, shifts, orders, booking, otpResult, gameConfigResult] = await Promise.all([
+  const [menu, shifts, orders, booking, otpResult, gameConfigResult, gameRewardResult] = await Promise.all([
     sb.from('menu_items').select('*').order('created_at').order('name'),
     sb.from('shift_config').select('*').order('id'),
     sb.from('orders').select('*, order_items(*)').order('created_at', { ascending: false }).limit(300),
     sb.rpc('get_booking_info'),
     state.role === 'student' ? sb.rpc('get_my_delivery_otps') : Promise.resolve({ data: [], error: null }),
     sb.rpc('get_game_config'),
+    state.role === 'student' ? sb.rpc('get_my_game_reward') : Promise.resolve({ data: null, error: null }),
   ]);
   const info = fail(booking);
   setServerClock(Date.parse(info.server_now) - Date.now());
@@ -53,12 +54,16 @@ export async function refreshData() {
   const otpMap = Object.fromEntries(fail(otpResult).map(x => [x.order_id, x.otp]));
   state.orders = fail(orders).map(o => mapOrder(o, otpMap));
   state.gameConfig = fail(gameConfigResult);
-  return JSON.stringify([state.menu, state.orders, state.gameConfig, SHIFTS.map(s => s.book + s.del)]);
+  state.gamePlayed = !!state.gameConfig.played;
+  const reward = fail(gameRewardResult);
+  state.pendingGameReward = reward ? { id: reward.id, hit: reward.hit, bullseye: reward.bullseye, accuracy: Number(reward.accuracy), arrows: reward.arrows, maxDiscount: Number(reward.max_discount), discount: Number(reward.discount) } : null;
+  return JSON.stringify([state.menu, state.orders, state.gameConfig, state.pendingGameReward, SHIFTS.map(s => s.book + s.del)]);
 }
 
 /* ---- ordering ---- */
 export async function startGame() { return fail(await sb.rpc('start_game')); }
 export async function saveGameConfig(config) { return fail(await sb.rpc('save_game_config', { p_enabled: config.enabled, p_max_discount: config.maxDiscount, p_target_speed: config.targetSpeed })); }
+export async function grantGameReplay(phone) { return fail(await sb.rpc('grant_game_replay', { p_phone: phone })); }
 export const submitGame = (id, { shots, playMs, shotData }) => sb.rpc('submit_game', { p_id: id, p_shots: shotData, p_played_ms: Math.round(playMs) }).then(fail);
 export async function placeOrder({ key, items, customer, challengeId }) {
   return fail(await sb.rpc('place_order', {

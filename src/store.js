@@ -35,6 +35,8 @@ const menu = CLOUD ? [] : (saved.menu || seedMenu).map(m => {
   const seed = seedMenu.find(s => s.id === m.id);
   return { stock: null, ...m, image: (seed && /^[a-z-]+(-cut\.webp|-3d\.webp|-photo\.webp|\.jpg|\.png)$/.test(m.image || '')) ? seed.image : (m.image || seed?.image || null) };
 });
+const localGameCycleKey = () => `${new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())}|${JSON.stringify(shiftConfig())}`;
+const initialGameCycleKey = localGameCycleKey();
 
 // Only one meal may be live; normalise older saved data.
 let live = false;
@@ -45,15 +47,17 @@ export const state = {
   menu, orders: saved.orders || [], cart: saved.cart || {},
   profile: saved.profile || { name: '', phone: '', block: 'A', floor: '1', room: '' },
   challenges: saved.challenges || {},
-  gamePlayed: !!saved.gamePlayed || Object.keys(saved.challenges || {}).length > 0,
+  gamePlayed: saved.gameCycleKey ? saved.gameCycleKey === initialGameCycleKey && !!saved.gamePlayed : !!saved.gamePlayed || Object.keys(saved.challenges || {}).length > 0,
+  gameCycleKey: initialGameCycleKey,
   gameConfig: saved.gameConfig ? { ...saved.gameConfig, maxDiscount: Math.min(9, Math.max(4, Number(saved.gameConfig.maxDiscount) || 9)) } : { enabled: true, maxDiscount: 9, targetSpeed: 2.4 },
+  pendingGameReward: null,
   checkout: null,        // delivery details of the order being placed
   checkoutKey: null,     // idempotency key for the order being placed
   challengeId: null,     // game challenge for the order being placed
   placing: false,
 };
 
-const snapshot = () => JSON.stringify(CLOUD ? { cart: state.cart } : { menu: state.menu, orders: state.orders, cart: state.cart, profile: state.profile, challenges: state.challenges, gamePlayed: state.gamePlayed, gameConfig: state.gameConfig, shifts: shiftConfig() });
+const snapshot = () => JSON.stringify(CLOUD ? { cart: state.cart } : { menu: state.menu, orders: state.orders, cart: state.cart, profile: state.profile, challenges: state.challenges, gamePlayed: state.gamePlayed, gameCycleKey: localGameCycleKey(), gameConfig: state.gameConfig, shifts: shiftConfig() });
 let persistTimer = 0;
 export function persist() {
   clearTimeout(persistTimer);
@@ -80,7 +84,7 @@ export function issueChallenge() {
   const now = Date.now();
   for (const [k, c] of Object.entries(state.challenges)) if (now - c.issuedAt > 24 * 3600e3) delete state.challenges[k];
   const id = uid();
-  state.challenges[id] = { id, issuedAt: now, expiresAt: now + CHALLENGE_TTL, result: null, used: false };
+  state.challenges[id] = { id, issuedAt: now, expiresAt: now + CHALLENGE_TTL, result: null, used: false, discountLimit: state.gameConfig.maxDiscount };
   state.challengeId = id;
   state.gamePlayed = true;
   persist();
@@ -96,8 +100,8 @@ export function submitGameResult(id, raw) {
 }
 export function previewDiscount(id) {
   const c = state.challenges[id];
-  if (!c || c.used || !c.result || Date.now() > c.expiresAt) return 0;
-  return computeDiscount({ packs: cartCount(), subtotal: subtotal(), ...c.result, maxDiscount: state.gameConfig.maxDiscount });
+  if (!c || c.used || !c.result) return 0;
+  return computeDiscount({ packs: cartCount(), subtotal: subtotal(), ...c.result, maxDiscount: c.discountLimit ?? state.gameConfig.maxDiscount });
 }
 
 // ---- Orders ---------------------------------------------------------------------------------------------
@@ -114,16 +118,16 @@ export function placeOrder({ key, customer, challengeId }) {
     if (item.stock != null && qty > item.stock) return { ok: false, error: `Only ${item.stock} left of ${item.name}` };
   }
   const sub = subtotal();
-  const discount = challengeId ? previewDiscount(challengeId) : 0;   // never taken from the client
+  const discount = challengeId ? (state.pendingGameReward?.id === challengeId && state.pendingGameReward.discount != null ? Math.min(sub, state.pendingGameReward.discount) : previewDiscount(challengeId)) : 0;   // never taken from the client
   if (challengeId && state.challenges[challengeId]) state.challenges[challengeId].used = true;
   const order = {
-    id: 'AN-' + String(Date.now()).slice(-6), key, shift: { id: shift.id, label: shift.label, delivery: shift.del }, createdAt: Date.now(), customer,
+    id: 'AN-' + String(Date.now()).slice(-6), key, shift: { id: shift.id, label: shift.label, delivery: shift.del }, createdAt: Date.now(), customer, gameChallengeId: challengeId || null,
     items: entries.map(({ item, qty }) => ({ id: item.id, name: item.name, qty, price: item.price })),
     subtotal: sub, discount, total: Math.max(0, sub - discount), status: 'Placed', agent: 'Unassigned',
   };
   for (const { item, qty } of entries) if (item.stock != null) item.stock -= qty;
   state.orders.unshift(order);
-  state.cart = {}; state.profile = customer; state.challengeId = null; state.checkoutKey = null;
+  state.cart = {}; state.profile = customer; state.challengeId = null; state.pendingGameReward = null; state.checkoutKey = null;
   persist();
   return { ok: true, order };
 }
@@ -133,6 +137,8 @@ export function updateOrder(id, patch) {
   if (!o || o.status === 'Cancelled') return;   // cancelled orders are final (stock already restored)
   if (patch.status === 'Cancelled' && o.status !== 'Cancelled') {
     for (const i of o.items) { const m = state.menu.find(x => x.id === i.id); if (m && m.stock != null) m.stock += i.qty; }
+    const challenge = o.gameChallengeId && state.challenges[o.gameChallengeId];
+    if (challenge?.result) { challenge.used = false; state.pendingGameReward = { id: challenge.id, ...challenge.result, maxDiscount: challenge.discountLimit ?? state.gameConfig.maxDiscount, discount: o.discount }; }
   }
   Object.assign(o, patch);
   persist();
@@ -152,4 +158,9 @@ export function addItem(data) {
 export function removeItem(id) {
   state.menu = state.menu.filter(x => x.id !== id); delete state.cart[id]; persist();
 }
-export function updateShifts(list) { setShifts(list); persist(); }
+export function syncGameCycle() {
+  const key = localGameCycleKey();
+  if (key === state.gameCycleKey) return false;
+  state.gameCycleKey = key; state.gamePlayed = false; persist(); return true;
+}
+export function updateShifts(list) { setShifts(list); syncGameCycle(); persist(); }
