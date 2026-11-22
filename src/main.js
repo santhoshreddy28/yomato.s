@@ -183,12 +183,14 @@ function adminGame() {
   return `${pageHead('Game controls', 'Manage access, rewards and target movement')}
   <form id="game-form" class="shift-admin"><div class="panel"><h3>Student game settings</h3><div class="form-grid">
     <label class="field full-width game-toggle"><span>Game available</span><input name="enabled" type="checkbox" ${c.enabled ? 'checked' : ''}> Students can play the discount game</label>
-    <div class="field"><label>Maximum discount (₹)</label><input name="maxDiscount" type="number" min="4" max="9" step="1" value="${Math.min(9, Math.max(4, c.maxDiscount))}" required></div>
+    <div class="field"><label>Minimum discount (₹)</label><input name="minDiscount" type="number" min="0" step="1" value="${c.minDiscount}" required></div>
+    <div class="field"><label>Maximum discount (₹)</label><input name="maxDiscount" type="number" min="0" step="1" value="${c.maxDiscount}" required></div>
     <div class="field"><label>Target speed (1–3.5×)</label><input name="targetSpeed" type="number" min="1" max="3.5" step="0.1" value="${c.targetSpeed}" required></div>
   </div></div><div><button class="primary-btn" type="submit">Save game settings</button></div></form>
-  <p class="footer-note">Each student account gets one game attempt per shift. Every game reward is between ₹4 and ₹9.</p>
+  <p class="footer-note">The closest shot sets the reward between the minimum and maximum. Discounts are rounded to the nearest rupee and cannot exceed the order total.</p>
   <form id="game-replay-form" class="shift-admin"><div class="panel"><h3>Give a student another play</h3><div class="field"><label>Student’s registered mobile number</label><input name="phone" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="10-digit mobile number" required></div>
-  <p class="footer-note">This adds one extra game chance to that student’s account.</p></div><div><button class="secondary-btn" type="submit">Allow this student to play again</button></div></form>`;
+  <p class="footer-note">This adds one extra game chance to that student’s account.</p></div><div><button class="secondary-btn" type="submit">Allow this student to play again</button></div></form>
+  <form id="game-replay-all-form" class="shift-admin"><div class="panel"><h3>Other game actions</h3><p class="footer-note">Give every student who has used a game chance this shift one additional chance.</p></div><div><button class="secondary-btn" type="submit">Give all played students one more chance</button></div></form>`;
 }
 
 /* photo upload: resized in the browser so it stays small and sharp */
@@ -296,7 +298,7 @@ const discountNow = () => {
   if (CLOUD) {
     const reward = state.cloudGame || state.pendingGameReward;
     if (reward?.discount != null) return Math.min(subtotal(), Number(reward.discount));
-    return reward ? computeDiscount({ packs: cartCount(), subtotal: subtotal(), hit: reward.hit, bullseye: reward.bullseye, accuracy: reward.accuracy, shots: reward.arrows, maxDiscount: reward.maxDiscount ?? state.gameConfig.maxDiscount }) : 0;
+    return reward ? computeDiscount({ subtotal: subtotal(), accuracy: reward.accuracy, minDiscount: reward.minDiscount ?? state.gameConfig.minDiscount, maxDiscount: reward.maxDiscount ?? state.gameConfig.maxDiscount }) : 0;
   }
   const challengeId = state.challengeId || state.pendingGameReward?.id;
   if (challengeId && state.pendingGameReward?.id === challengeId && state.pendingGameReward.discount != null) return Math.min(subtotal(), Number(state.pendingGameReward.discount));
@@ -305,7 +307,7 @@ const discountNow = () => {
 async function launchGame() {
   if (state.gamePlayed || !state.gameConfig.enabled) { showToast(state.gamePlayed ? 'You have already used your game chance.' : 'The game is temporarily unavailable.'); reviewModal(); return; }
   closeModal(); state.cloudGame = null;
-  if (CLOUD) { try { const challenge = await cloud.startGame(); state.challengeId = challenge.id; state.challengeMaxDiscount = Number(challenge.max_discount); state.gamePlayed = true; state.gameConfig = { ...state.gameConfig, maxDiscount: challenge.max_discount, targetSpeed: challenge.target_speed }; } catch (e) { showToast(e.message); if (/already used/i.test(e.message)) state.gamePlayed = true; reviewModal(); return; } } else { try { issueChallenge(); } catch (e) { showToast(e.message); reviewModal(); return; } }
+  if (CLOUD) { try { const challenge = await cloud.startGame(); state.challengeId = challenge.id; state.challengeMinDiscount = Number(challenge.min_discount); state.challengeMaxDiscount = Number(challenge.max_discount); state.gamePlayed = true; state.gameConfig = { ...state.gameConfig, minDiscount: challenge.min_discount, maxDiscount: challenge.max_discount, targetSpeed: challenge.target_speed }; } catch (e) { showToast(e.message); if (/already used/i.test(e.message)) state.gamePlayed = true; reviewModal(); return; } } else { try { issueChallenge(); } catch (e) { showToast(e.message); reviewModal(); return; } }
   const layer = document.createElement('div'); layer.className = 'game-screen';
   layer.innerHTML = `<div class="game-frame"><div class="game-stage"></div><button class="game-back" aria-label="Exit game">${ico('back')}</button></div>`;
   document.body.append(layer);
@@ -313,7 +315,7 @@ async function launchGame() {
   const leave = () => { game.destroy(); layer.remove(); };
   const game = mountGame(layer.querySelector('.game-stage'), async result => {
     let earned;
-    if (CLOUD) { try { const r = await cloud.submitGame(state.challengeId, result); state.cloudGame = r.hit == null ? null : { hit: r.hit, bullseye: r.bullseye, accuracy: r.accuracy, arrows: r.arrows, maxDiscount: state.challengeMaxDiscount ?? state.gameConfig.maxDiscount }; } catch { state.cloudGame = null; } earned = discountNow(); }
+    if (CLOUD) { try { const r = await cloud.submitGame(state.challengeId, result); state.cloudGame = r.hit == null ? null : { hit: r.hit, bullseye: r.bullseye, accuracy: r.accuracy, arrows: r.arrows, minDiscount: state.challengeMinDiscount ?? state.gameConfig.minDiscount, maxDiscount: state.challengeMaxDiscount ?? state.gameConfig.maxDiscount }; } catch { state.cloudGame = null; } earned = discountNow(); }
     else earned = submitGameResult(state.challengeId, result);
     frame.querySelector('.game-back').remove();
     frame.insertAdjacentHTML('beforeend', `<div class="game-result"><div><p class="r-title">${result.hit ? 'Well aimed' : 'Thank you for playing'}</p><div class="r-amount">${money(earned)} off</div><p class="r-sub">Applied to your reservation</p><button class="primary-btn full" id="apply-reward">Continue</button></div></div>`);
@@ -336,7 +338,7 @@ async function submitOrder(btn) {
     const label = btn.dataset.label;
     try {
       await cloud.placeOrder({ key: state.checkoutKey, items: cartEntries().map(({ item, qty }) => ({ id: item.id, qty })), customer: state.checkout, challengeId: state.challengeId || state.pendingGameReward?.id || null });
-      state.cart = {}; state.challengeId = null; state.cloudGame = null; state.pendingGameReward = null; state.challengeMaxDiscount = null; state.checkoutKey = null; state.profile = { ...state.profile, ...state.checkout }; persist();
+      state.cart = {}; state.challengeId = null; state.cloudGame = null; state.pendingGameReward = null; state.challengeMinDiscount = null; state.challengeMaxDiscount = null; state.checkoutKey = null; state.profile = { ...state.profile, ...state.checkout }; persist();
       lastSig = await cloud.refreshData(); state.placing = false; closeModal(); state.page = 'orders'; render(); showToast('Your meal is reserved. Thank you.');
     } catch (e) { state.placing = false; btn.disabled = false; btn.textContent = label; showToast(e.message); }
     return;
@@ -355,7 +357,7 @@ function changeQty(id, d) {
 }
 /** Runs a server action, then reloads data and redraws. Errors are shown and the screen is re-synced from the server. */
 async function run(fn, okMsg) {
-  try { await fn(); lastSig = await cloud.refreshData(); render(); if (okMsg) showToast(okMsg); }
+  try { const result = await fn(); lastSig = await cloud.refreshData(); render(); if (okMsg) showToast(typeof okMsg === 'function' ? okMsg(result) : okMsg); }
   catch (e) { showToast(e.message || 'Something went wrong'); try { lastSig = await cloud.refreshData(); } catch {} render(); }
 }
 document.addEventListener('click', async e => {
@@ -419,13 +421,19 @@ document.addEventListener('submit', e => {
     updateShifts(list); render(); showToast('Shift times saved');
   }
   else if (f.id === 'game-form') {
-    const config = { enabled: f.elements.enabled.checked, maxDiscount: Math.min(9, Math.max(4, Number(d.maxDiscount))), targetSpeed: Math.min(3.5, Math.max(1, Number(d.targetSpeed))) };
+    const minDiscount = Math.floor(Number(d.minDiscount)), maxDiscount = Math.floor(Number(d.maxDiscount));
+    if (!Number.isFinite(minDiscount) || !Number.isFinite(maxDiscount) || minDiscount < 0 || maxDiscount < minDiscount) { showToast('Enter a maximum discount at least as high as the minimum'); return; }
+    const config = { enabled: f.elements.enabled.checked, minDiscount, maxDiscount, targetSpeed: Math.min(3.5, Math.max(1, Number(d.targetSpeed))) };
     if (CLOUD) { run(() => cloud.saveGameConfig(config), 'Game settings saved'); return; }
     state.gameConfig = config; persist(); render(); showToast('Game settings saved');
   }
   else if (f.id === 'game-replay-form') {
     if (!CLOUD) { showToast('Student game access requires the connected portal.'); return; }
     run(() => cloud.grantGameReplay(d.phone), 'Another game chance is available for that student');
+  }
+  else if (f.id === 'game-replay-all-form') {
+    if (!CLOUD) { showToast('Student game access requires the connected portal.'); return; }
+    run(() => cloud.grantGameReplayAll(), count => count ? `Another chance granted to ${count} student${count === 1 ? '' : 's'}` : 'No played students need another chance');
   }
   else if (f.matches('.otp-form')) {
     if (!CLOUD) { showToast('OTP verification requires the secure Supabase backend.'); return; }

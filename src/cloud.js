@@ -56,14 +56,15 @@ export async function refreshData() {
   state.gameConfig = fail(gameConfigResult);
   state.gamePlayed = !!state.gameConfig.played;
   const reward = fail(gameRewardResult);
-  state.pendingGameReward = reward ? { id: reward.id, hit: reward.hit, bullseye: reward.bullseye, accuracy: Number(reward.accuracy), arrows: reward.arrows, maxDiscount: Number(reward.max_discount), discount: Number(reward.discount) } : null;
+  state.pendingGameReward = reward ? { id: reward.id, hit: reward.hit, bullseye: reward.bullseye, accuracy: Number(reward.accuracy), arrows: reward.arrows, minDiscount: Number(reward.min_discount), maxDiscount: Number(reward.max_discount), discount: Number(reward.discount) } : null;
   return JSON.stringify([state.menu, state.orders, state.gameConfig, state.pendingGameReward, SHIFTS.map(s => s.book + s.del)]);
 }
 
 /* ---- ordering ---- */
 export async function startGame() { return fail(await sb.rpc('start_game')); }
-export async function saveGameConfig(config) { return fail(await sb.rpc('save_game_config', { p_enabled: config.enabled, p_max_discount: config.maxDiscount, p_target_speed: config.targetSpeed })); }
+export async function saveGameConfig(config) { return fail(await sb.rpc('save_game_config', { p_enabled: config.enabled, p_min_discount: config.minDiscount, p_max_discount: config.maxDiscount, p_target_speed: config.targetSpeed })); }
 export async function grantGameReplay(phone) { return fail(await sb.rpc('grant_game_replay', { p_phone: phone })); }
+export async function grantGameReplayAll() { return fail(await sb.rpc('grant_game_replay_all')); }
 export const submitGame = (id, { shots, playMs, shotData }) => sb.rpc('submit_game', { p_id: id, p_shots: shotData, p_played_ms: Math.round(playMs) }).then(fail);
 export async function placeOrder({ key, items, customer, challengeId }) {
   return fail(await sb.rpc('place_order', {

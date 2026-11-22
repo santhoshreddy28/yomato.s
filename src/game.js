@@ -79,9 +79,10 @@ export function mountGame(frame, onEnd, { targetSpeed = 2.4 } = {}) {
       const k = dt / 16.67;
       for (let s = 0; s < 4 && arrow; s++) {   // small sub-steps so a fast arrow can never skip through the target
         arrow.x += arrow.vx * k / 4; arrow.y += arrow.vy * k / 4;   // straight flight so the scope is exact
-        if (Math.hypot(arrow.x - e.x, arrow.y - e.y) < TARGET_R) {
-          const error = Math.hypot(arrow.x - e.x, arrow.y - e.y);
-          hit = true; bullseye = error <= TARGET_R * 0.1; accuracy = Math.max(0, 1 - error / TARGET_R); hitAt = t; flash = 160; arrow = null;
+        const error = Math.hypot(arrow.x - e.x, arrow.y - e.y);
+        accuracy = Math.max(accuracy, Math.max(0, 1 - error / (TARGET_R * 2)));
+        if (error < TARGET_R) {
+          hit = true; bullseye = error <= TARGET_R * 0.1; hitAt = t; flash = 160; arrow = null;
           for (let i = 0; i < 18; i++) { const a = Math.random() * 6.28, sp = 0.05 + Math.random() * 0.12; particles.push({ x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 600 }); }
           setTimeout(end, 750);
         }

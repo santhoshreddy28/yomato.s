@@ -37,6 +37,8 @@ const menu = CLOUD ? [] : (saved.menu || seedMenu).map(m => {
 });
 const localGameCycleKey = () => `${new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())}|${JSON.stringify(shiftConfig())}`;
 const initialGameCycleKey = localGameCycleKey();
+const savedGameMin = Math.max(0, Math.floor(Number(saved.gameConfig?.minDiscount ?? 4) || 0));
+const savedGameMax = Math.max(savedGameMin, Math.floor(Number(saved.gameConfig?.maxDiscount ?? 9) || 0));
 
 // Only one meal may be live; normalise older saved data.
 let live = false;
@@ -49,7 +51,7 @@ export const state = {
   challenges: saved.challenges || {},
   gamePlayed: saved.gameCycleKey ? saved.gameCycleKey === initialGameCycleKey && !!saved.gamePlayed : !!saved.gamePlayed || Object.keys(saved.challenges || {}).length > 0,
   gameCycleKey: initialGameCycleKey,
-  gameConfig: saved.gameConfig ? { ...saved.gameConfig, maxDiscount: Math.min(9, Math.max(4, Number(saved.gameConfig.maxDiscount) || 9)) } : { enabled: true, maxDiscount: 9, targetSpeed: 2.4 },
+  gameConfig: saved.gameConfig ? { ...saved.gameConfig, minDiscount: savedGameMin, maxDiscount: savedGameMax } : { enabled: true, minDiscount: 4, maxDiscount: 9, targetSpeed: 2.4 },
   pendingGameReward: null,
   checkout: null,        // delivery details of the order being placed
   checkoutKey: null,     // idempotency key for the order being placed
@@ -84,7 +86,7 @@ export function issueChallenge() {
   const now = Date.now();
   for (const [k, c] of Object.entries(state.challenges)) if (now - c.issuedAt > 24 * 3600e3) delete state.challenges[k];
   const id = uid();
-  state.challenges[id] = { id, issuedAt: now, expiresAt: now + CHALLENGE_TTL, result: null, used: false, discountLimit: state.gameConfig.maxDiscount };
+  state.challenges[id] = { id, issuedAt: now, expiresAt: now + CHALLENGE_TTL, result: null, used: false, minDiscount: state.gameConfig.minDiscount, maxDiscount: state.gameConfig.maxDiscount };
   state.challengeId = id;
   state.gamePlayed = true;
   persist();
@@ -101,7 +103,7 @@ export function submitGameResult(id, raw) {
 export function previewDiscount(id) {
   const c = state.challenges[id];
   if (!c || c.used || !c.result) return 0;
-  return computeDiscount({ packs: cartCount(), subtotal: subtotal(), ...c.result, maxDiscount: c.discountLimit ?? state.gameConfig.maxDiscount });
+  return computeDiscount({ subtotal: subtotal(), ...c.result, minDiscount: c.minDiscount ?? state.gameConfig.minDiscount, maxDiscount: c.maxDiscount ?? state.gameConfig.maxDiscount });
 }
 
 // ---- Orders ---------------------------------------------------------------------------------------------
@@ -138,7 +140,7 @@ export function updateOrder(id, patch) {
   if (patch.status === 'Cancelled' && o.status !== 'Cancelled') {
     for (const i of o.items) { const m = state.menu.find(x => x.id === i.id); if (m && m.stock != null) m.stock += i.qty; }
     const challenge = o.gameChallengeId && state.challenges[o.gameChallengeId];
-    if (challenge?.result) { challenge.used = false; state.pendingGameReward = { id: challenge.id, ...challenge.result, maxDiscount: challenge.discountLimit ?? state.gameConfig.maxDiscount, discount: o.discount }; }
+    if (challenge?.result) { challenge.used = false; state.pendingGameReward = { id: challenge.id, ...challenge.result, minDiscount: challenge.minDiscount ?? state.gameConfig.minDiscount, maxDiscount: challenge.maxDiscount ?? state.gameConfig.maxDiscount, discount: o.discount }; }
   }
   Object.assign(o, patch);
   persist();
