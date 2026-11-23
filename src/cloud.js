@@ -26,14 +26,17 @@ export async function loadProfile() {
 
 /* ---- reading ---- */
 const mapItem = m => ({ id: m.id, name: m.name, desc: m.description, price: Number(m.price), available: m.is_available, stock: m.stock, image: m.image });
-const mapOrder = (o, otps = {}) => ({
-  id: o.code, uuid: o.id, key: o.idempotency_key, business: o.business || 'food', createdAt: Date.parse(o.created_at),
+const mapOrder = (o, otps = {}) => {
+  const business = o.business || 'food';
+  return {
+  id: o.code, uuid: o.id, key: o.idempotency_key, business, createdAt: Date.parse(o.created_at),
   deliveryOtp: otps[o.id],
-  shift: o.shift ? { id: o.shift, label: 'Shift ' + o.shift, delivery: SHIFTS.find(s => s.id === o.shift)?.del || '' } : null,
+  shift: business === 'drinks' ? null : (o.shift ? { id: o.shift, label: 'Shift ' + o.shift, delivery: SHIFTS.find(s => s.id === o.shift)?.del || '' } : null),
   customer: { name: o.customer_name, phone: o.phone, block: o.block, floor: String(o.floor), room: o.room },
   items: (o.order_items || []).map(i => ({ id: i.menu_item_id, name: i.item_name, qty: i.quantity, price: Number(i.unit_price) })),
   subtotal: Number(o.subtotal), discount: Number(o.discount), total: Number(o.total), status: o.status, agent: o.agent,
-});
+};
+};
 /** Loads menu, shift times and orders into `state`. Returns a signature so callers can tell if anything changed. */
 export async function refreshData() {
   fail(await sb.rpc('sync_daily_stock'));
