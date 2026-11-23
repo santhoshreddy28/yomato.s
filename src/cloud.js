@@ -1,6 +1,6 @@
 // Shared-backend layer (Supabase). Every function throws Error(message) on failure; the UI shows the message.
 import { sb } from './supabase.js';
-import { state } from './store.js';
+import { state, findMenuItem } from './store.js';
 import { SHIFTS, setShifts, setServerClock } from './shifts.js';
 
 const fail = r => { if (r.error) throw new Error(r.error.message || 'Something went wrong'); return r.data; };
@@ -21,13 +21,13 @@ export async function signInGuest() { fail(await sb.auth.signInAnonymously()); }
 export async function loadProfile() {
   const s = await getSession(); if (!s) return null;
   const p = fail(await sb.from('profiles').select('*').eq('id', s.user.id).single());
-  return { role: p.role, name: p.full_name, phone: p.phone, block: p.block, floor: String(p.floor), room: p.room, email: s.user.email, gamePlayed: !!p.game_played };
+  return { role: p.role, business: p.business || 'food', name: p.full_name, phone: p.phone, block: p.block, floor: String(p.floor), room: p.room, email: s.user.email, gamePlayed: !!p.game_played };
 }
 
 /* ---- reading ---- */
 const mapItem = m => ({ id: m.id, name: m.name, desc: m.description, price: Number(m.price), available: m.is_available, stock: m.stock, image: m.image });
 const mapOrder = (o, otps = {}) => ({
-  id: o.code, uuid: o.id, key: o.idempotency_key, createdAt: Date.parse(o.created_at),
+  id: o.code, uuid: o.id, key: o.idempotency_key, business: o.business || 'food', createdAt: Date.parse(o.created_at),
   deliveryOtp: otps[o.id],
   shift: o.shift ? { id: o.shift, label: 'Shift ' + o.shift, delivery: SHIFTS.find(s => s.id === o.shift)?.del || '' } : null,
   customer: { name: o.customer_name, phone: o.phone, block: o.block, floor: String(o.floor), room: o.room },
@@ -37,7 +37,7 @@ const mapOrder = (o, otps = {}) => ({
 /** Loads menu, shift times and orders into `state`. Returns a signature so callers can tell if anything changed. */
 export async function refreshData() {
   fail(await sb.rpc('sync_daily_stock'));
-  const [menu, shifts, orders, booking, otpResult, gameConfigResult, gameRewardResult] = await Promise.all([
+  const [menu, shifts, orders, booking, otpResult, gameConfigResult, gameRewardResult, drinksLaunch] = await Promise.all([
     sb.from('menu_items').select('*').order('created_at').order('name'),
     sb.from('shift_config').select('*').order('id'),
     sb.from('orders').select('*, order_items(*)').order('created_at', { ascending: false }).limit(300),
@@ -45,14 +45,19 @@ export async function refreshData() {
     state.role === 'student' ? sb.rpc('get_my_delivery_otps') : Promise.resolve({ data: [], error: null }),
     sb.rpc('get_game_config'),
     state.role === 'student' ? sb.rpc('get_my_game_reward') : Promise.resolve({ data: null, error: null }),
+    // Drinks is an optional student section; a missing/older RPC must not block the food dashboard.
+    sb.rpc('get_drinks_launch_at').then(r => r.error ? { data: null, error: null } : r),
   ]);
   const info = fail(booking);
   setServerClock(Date.parse(info.server_now) - Date.now());
   setShifts([{ open: tm(info.open_t), close: tm(info.close_t), dStart: tm(info.deliver_start), dEnd: tm(info.deliver_end) }]);
   fail(shifts);
-  state.menu = fail(menu).map(mapItem);
+  const menuItems = fail(menu).map(m => ({ ...mapItem(m), business: m.business || 'food' }));
+  state.menu = menuItems.filter(item => item.business === 'food');
+  state.drinksMenu = menuItems.filter(item => item.business === 'drinks');
+  state.drinksLaunchAt = fail(drinksLaunch) || null;
   const otpMap = Object.fromEntries(fail(otpResult).map(x => [x.order_id, x.otp]));
-  state.orders = fail(orders).map(o => mapOrder(o, otpMap));
+  state.orders = fail(orders).map(o => mapOrder(o, otpMap)).filter(o => state.role === 'student' || o.business === state.business);
   state.gameConfig = fail(gameConfigResult);
   state.gamePlayed = !!state.gameConfig.played;
   const reward = fail(gameRewardResult);
@@ -69,7 +74,7 @@ export const submitGame = (id, { shots, playMs, shotData }) => sb.rpc('submit_ga
 export async function placeOrder({ key, items, customer, challengeId }) {
   return fail(await sb.rpc('place_order', {
     p_key: key, p_items: items.map(({ id, qty }) => ({ id, qty })),
-    p_details: { name: customer.name, phone: customer.phone, block: customer.block, room: customer.room }, p_challenge: challengeId || null,
+    p_details: { name: customer.name, phone: customer.phone, block: customer.block, room: customer.room, business: state.business || 'food' }, p_challenge: challengeId || null,
   }));
 }
 
@@ -95,26 +100,26 @@ const dropPhoto = url => { const m = String(url || '').match(new RegExp(`/${PHOT
 /** photo: undefined = keep, null = remove, Blob = new upload */
 export async function saveMenuItem(id, { name, desc, price, stock }, photo) {
   const patch = { name, description: desc, price, stock, daily_stock_limit: stock };
-  const old = state.menu.find(x => x.id === id)?.image;
+  const old = findMenuItem(id)?.image;
   if (photo !== undefined) { patch.image = photo ? await uploadPhoto(photo) : null; }
-  fail(await sb.from('menu_items').update(patch).eq('id', id));
+  fail(await sb.from('menu_items').update(patch).eq('id', id).eq('business', state.business || 'food'));
   if (photo !== undefined) dropPhoto(old);
 }
 export async function addMenuItem({ name, desc, price, stock }, photo) {
   const image = photo ? await uploadPhoto(photo) : null;
-  fail(await sb.from('menu_items').insert({ name, description: desc, price, stock, daily_stock_limit: stock, image, is_available: false }));
+  fail(await sb.from('menu_items').insert({ name, description: desc, price, stock, daily_stock_limit: stock, image, is_available: false, business: state.business || 'food' }));
 }
 export async function deleteMenuItem(id) {
   const old = state.menu.find(x => x.id === id)?.image;
-  fail(await sb.from('menu_items').delete().eq('id', id)); dropPhoto(old);
+  fail(await sb.from('menu_items').delete().eq('id', id).eq('business', state.business || 'food')); dropPhoto(old);
 }
 export async function setTodayMeal(id) { fail(await sb.rpc('set_today_meal', { p_id: id })); }
 export async function patchItem(id, patch) {
   const update = Object.hasOwn(patch, 'stock') ? { ...patch, daily_stock_limit: patch.stock } : patch;
-  fail(await sb.from('menu_items').update(update).eq('id', id));
+  fail(await sb.from('menu_items').update(update).eq('id', id).eq('business', state.business || 'food'));
 }
+export async function setDrinkAvailability(id, available) { fail(await sb.from('menu_items').update({ is_available: available }).eq('id', id).eq('business', 'drinks')); }
 export async function saveShifts(list) {
   const x = list[0];
   fail(await sb.from('shift_config').update({ open_t: hhmm(x.open), close_t: hhmm(x.close), deliver_start: hhmm(x.dStart), deliver_end: hhmm(x.dEnd) }).eq('id', 1));
 }
-

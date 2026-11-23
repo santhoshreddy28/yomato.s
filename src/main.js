@@ -1,4 +1,4 @@
-import { state, STATUSES, AGENTS, money, cartEntries, cartCount, subtotal, uid, persist, maxQty, issueChallenge, submitGameResult, previewDiscount, placeOrder, updateOrder, saveItem, addItem, removeItem, updateShifts, syncGameCycle } from './store.js';
+import { state, STATUSES, AGENTS, money, cartEntries, cartCount, subtotal, uid, persist, maxQty, findMenuItem, issueChallenge, submitGameResult, previewDiscount, placeOrder, updateOrder, saveItem, addItem, removeItem, updateShifts, syncGameCycle } from './store.js';
 import '@fontsource-variable/fraunces';
 import '@fontsource-variable/dm-sans';
 import { mountGame } from './game.js';
@@ -9,12 +9,14 @@ import * as cloud from './cloud.js';
 import { staffUnlocked, staffLock, staffLogin } from './staff.js';
 
 const app = document.querySelector('#app');
-/** Which endpoint this page was opened on: '/' = student, '/admin/' = admin, '/delivery/' = delivery. */
-const PORTAL = ['admin', 'delivery'].includes(window.ANNAM_PORTAL) ? window.ANNAM_PORTAL : 'student';
+/** Student, food staff, and drinks staff each use distinct portal paths. */
+const PORTAL = ['admin', 'delivery', 'drinks-admin', 'drinks-delivery'].includes(window.ANNAM_PORTAL) ? window.ANNAM_PORTAL : 'student';
+const PORTAL_ROLE = PORTAL === 'drinks-admin' ? 'admin' : PORTAL === 'drinks-delivery' ? 'delivery' : PORTAL;
+const BUSINESS = PORTAL.startsWith('drinks-') ? 'drinks' : 'food';
 const ROOT = PORTAL === 'student' ? './' : '../';
 const APP_VERSION = '1.1.0';
 // Staff endpoints:  /1121/ (delivery)   /A1121/ (admin)
-const PORTAL_URL = { student: ROOT, admin: ROOT + 'A1121/', delivery: ROOT + '1121/' };
+const PORTAL_URL = { student: ROOT, admin: ROOT + 'A1121/', delivery: ROOT + '1121/', 'drinks-admin': ROOT + 'A1026/', 'drinks-delivery': ROOT + '1026/' };
 const IMG_BASE = ROOT + 'images/foods/';
 const money2 = n => '₹' + Number(n || 0).toFixed(2);
 const esc = (s = '') => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -30,13 +32,14 @@ const ico = n => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="curre
 
 /* ---------------- navigation ---------------- */
 const NAV = {
-  student: [['menu', 'Today', 'menu'], ['orders', 'My orders', 'orders']],
+  student: [['menu', 'Food', 'menu'], ['drinks', 'Fresh Juice & Drinks', 'menu'], ['orders', 'My orders', 'orders']],
   admin: [['overview', 'Dashboard', 'grid'], ['orders', 'Orders', 'orders'], ['menu-admin', 'Menu', 'menu'], ['shifts-admin', 'Shifts', 'clock'], ['game-admin', 'Game', 'bolt']],
   delivery: [['active-deliveries', 'Active', 'bike'], ['delivery-history', 'Completed', 'clock']],
 };
 // The Student/Admin/Delivery preview switch exists only for local demo use (npm run dev, or add ?demo to the address). Students never see it.
-const HOME = { student: 'menu', admin: 'overview', delivery: 'active-deliveries' };
-state.role = PORTAL; state.page = HOME[PORTAL];   // each endpoint is locked to its own portal
+const HOME = { student: 'menu', admin: 'overview', delivery: 'active-deliveries', 'drinks-admin': 'overview', 'drinks-delivery': 'active-deliveries' };
+state.business = BUSINESS;
+state.role = PORTAL_ROLE; state.page = HOME[PORTAL];   // each endpoint is locked to its own portal
 
 /* ---- direct APK download (file lives at downloads/yomato.apk; button only appears once the file exists) ---- */
 const APK_URL = ROOT + 'downloads/yomato.apk';
@@ -54,7 +57,7 @@ function brand() { return `<div class="brand" aria-label="Yomato"><span class="b
 function header() {
   return `<header class="topbar">${brand()}
   <nav class="top-links">${NAV[state.role].map(([id, label]) => `<button class="nav-btn ${state.page === id ? 'active' : ''}" data-action="nav" data-page="${id}">${label}</button>`).join('')}</nav>
-  <div class="top-actions">${installButton()}${!CLOUD && PORTAL !== 'student' ? `<span class="who">${PORTAL === 'admin' ? 'Admin' : 'Delivery'}</span><button class="signout" data-action="signout">Sign out</button>` : ''}${CLOUD && PORTAL !== 'student' ? `<span class="who">${esc(state.role === 'student' ? (state.profile.name || '').split(' ')[0] : state.role[0].toUpperCase() + state.role.slice(1))}</span><button class="signout" data-action="signout">Sign out</button>` : ''}
+  <div class="top-actions">${installButton()}${!CLOUD && PORTAL !== 'student' ? `<span class="who">${state.role === 'admin' ? 'Admin' : 'Delivery'}</span><button class="signout" data-action="signout">Sign out</button>` : ''}${CLOUD && PORTAL !== 'student' ? `<span class="who">${esc(state.role === 'student' ? (state.profile.name || '').split(' ')[0] : state.role[0].toUpperCase() + state.role.slice(1))}</span><button class="signout" data-action="signout">Sign out</button>` : ''}
 </div></header>`;
 }
 function mobileNav() {
@@ -63,6 +66,8 @@ function mobileNav() {
 }
 function pageHead(title, sub = '', right = '') { return `<div class="page-head"><div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div>${right}</div>`; }
 const empty = msg => `<div class="empty-state">${msg}</div>`;
+const activeMenu = () => state.business === 'drinks' ? state.drinksMenu : state.menu;
+const activeOrders = () => state.orders.filter(o => (o.business || 'food') === state.business);
 
 /* ---------------- student ---------------- */
 const imgSrc = im => (/^(data:|https?:|blob:)/.test(im) ? im : IMG_BASE + im);
@@ -90,6 +95,12 @@ function orderBox(item) {
 let lastShiftKey = shiftState().key;
 setInterval(() => {
   if (!CLOUD && syncGameCycle()) { lastShiftKey = shiftState().key; if (state.page === 'menu') refreshCart(); else render(); }
+  const drinkCounter = document.getElementById('drinks-counter');
+  if (drinkCounter && state.drinksLaunchAt) {
+    const remaining = Math.max(0, Math.ceil((new Date(state.drinksLaunchAt).getTime() - Date.now()) / 1000));
+    drinkCounter.textContent = hms(remaining);
+    if (!remaining) render();
+  }
   const el = document.getElementById('counter'); if (!el) return;
   const st = shiftState();
   if (st.key !== lastShiftKey) { lastShiftKey = st.key; refreshCart(); return; }
@@ -104,6 +115,13 @@ function menuPage() {
   return `<section class="today"><div class="today-art"><div class="arch"><div class="arch-in">${photo(item)}</div></div></div>
   <div class="today-body"><p class="eyebrow"><span>Today’s meal · ${day}</span></p><h1>${esc(item.name)}</h1><p class="desc">${esc(item.desc)}</p><div class="orn" aria-hidden="true"><i></i></div>
   <div id="order-box">${item.stock != null && item.stock <= 5 ? `<div class="stock-warning" role="status">ONLY ${item.stock} LEFT</div>` : ''}${orderBox(item)}</div></div></section>`;
+}
+function drinksPage() {
+  const launchAt = state.drinksLaunchAt ? new Date(state.drinksLaunchAt).getTime() : Date.now() + 37 * 3600 * 1000;
+  const remaining = Math.max(0, Math.ceil((launchAt - Date.now()) / 1000));
+  if (remaining) return `<section class="today drinks-coming-soon"><div class="today-body"><p class="eyebrow"><span>Fresh juice & drinks</span></p><h1>Coming soon</h1><p class="desc">Fresh drinks are on the way. We’re getting everything ready for you.</p><div class="drinks-countdown"><span>Available in</span><strong id="drinks-counter">${hms(remaining)}</strong></div></div></section>`;
+  const items = state.drinksMenu.filter(item => item.available && (item.stock == null || item.stock > 0));
+  return `<section class="today drinks-menu"><div class="today-body"><p class="eyebrow"><span>Fresh juice & drinks</span></p><h1>Drinks menu</h1><p class="desc">Freshly prepared drinks, delivered to your room.</p>${items.length ? `<div class="drinks-grid">${items.map(item => `<article class="drink-card"><div class="drink-photo">${photo(item)}</div><div class="drink-card-info"><h2>${esc(item.name)}</h2><p>${esc(item.desc || '')}</p><div class="drink-card-foot"><strong>${money(item.price)}</strong><div class="qty-control"><button data-action="qty" data-id="${esc(item.id)}" data-delta="-1" aria-label="One less" ${!state.cart[item.id] ? 'disabled' : ''}>−</button><span>${state.cart[item.id] || 0}</span><button data-action="qty" data-id="${esc(item.id)}" data-delta="1" aria-label="One more" ${state.cart[item.id] >= maxQty(item) ? 'disabled' : ''}>+</button></div></div></div></article>`).join('')}</div><button class="primary-btn full big drinks-reserve" data-action="checkout" ${cartCount() ? '' : 'disabled'}>Reserve drinks${cartCount() ? ` · ${cartCount()} item${cartCount() === 1 ? '' : 's'}` : ''}</button>` : empty('We’re updating the drinks menu. Please check back soon.')}</div></section>`;
 }
 function orderCard(o, allowCancel = false) {
   return `<div class="order-card"><div class="order-head"><span class="order-id">Ref. ${esc(o.id)}</span><span class="status ${statusClass(o.status)}">${esc(o.status)}</span></div>
@@ -121,7 +139,8 @@ function tracker(o) {
 }
 function studentOrders() {
   const mine = CLOUD ? state.orders : state.orders.filter(o => !state.profile.phone || o.customer.phone === state.profile.phone);
-  return `<div class="wrap">${pageHead('My orders', 'Your meals, from our kitchen to your door.')}${mine.length ? mine.map(o => orderCard(o, true).replace(/<\/div>$/, tracker(o) + '</div>')).join('') : empty('Your reservations will appear here.')}</div>`;
+  const selected = mine.filter(o => (o.business || 'food') === state.ordersTab);
+  return `<div class="wrap">${pageHead('My orders', 'Your meals and drinks, from our kitchen to your door.')}<div class="tabs">${[['food','Food'],['drinks','Drinks']].map(([v,l])=>`<button class="tab ${state.ordersTab===v?'active':''}" data-action="student-orders-filter" data-filter="${v}">${l}</button>`).join('')}</div>${selected.length ? selected.map(o => orderCard(o, true).replace(/<\/div>$/, tracker(o) + '</div>')).join('') : empty(`Your ${state.ordersTab} reservations will appear here.`)}</div>`;
 }
 function fields(p) {
   return `<div class="field full-width"><label>Full name</label><input name="name" value="${esc(p.name)}" placeholder="Your name" autocomplete="name" required></div>
@@ -135,24 +154,24 @@ const statusClass = s => ({ 'Delivered': 'delivered', 'Ready for pickup': 'ready
 
 /* ---------------- admin ---------------- */
 function adminOverview() {
-  const live = state.orders.filter(o => o.status !== 'Cancelled');
+  const orders = activeOrders(), live = orders.filter(o => o.status !== 'Cancelled');
   const active = live.filter(o => o.status !== 'Delivered'), done = live.filter(o => o.status === 'Delivered');
   const revenue = done.reduce((a, o) => a + o.total, 0), avg = live.length ? live.reduce((a, o) => a + o.total, 0) / live.length : 0;
   const tally = {}; live.forEach(o => o.items.forEach(i => tally[i.name] = (tally[i.name] || 0) + i.qty));
   const top = Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 5), topMax = top[0]?.[1] || 1;
   const blocks = ['A', 'B'].map(b => [b, live.filter(o => o.customer.block === b).length]);
-  return `${pageHead('Dashboard', 'Today’s hostel food operations')}
+  return `${pageHead(state.business === 'drinks' ? 'Drinks dashboard' : 'Dashboard', state.business === 'drinks' ? 'Today’s drinks operations' : 'Today’s hostel food operations')}
   <div class="stat-grid">${[['Total orders', live.length], ['Active', active.length], ['Delivered', done.length], ['Delivered revenue', money(revenue)], ['Avg. order', money(avg)]].map(([l, v]) => `<div class="stat"><div class="label">${l}</div><div class="value">${v}</div></div>`).join('')}</div>
   <div class="two-col"><div class="panel"><h3>Top items</h3>${top.length ? top.map(([n, q]) => `<div class="bar-row"><span>${esc(n)}</span><div class="bar"><i style="width:${q / topMax * 100}%"></i></div><b>${q}</b></div>`).join('') : '<p class="muted small">No sales yet.</p>'}</div>
   <div class="panel"><h3>Orders by block</h3>${blocks.map(([b, n]) => `<div class="bar-row"><span>Block ${b}</span><div class="bar"><i style="width:${live.length ? n / live.length * 100 : 0}%"></i></div><b>${n}</b></div>`).join('')}</div></div>
   <div class="section-heading"><h2>Recent orders</h2><button class="link-btn" data-action="nav" data-page="orders">Manage orders →</button></div>
-  ${state.orders.length ? state.orders.slice(0, 5).map(orderCard).join('') : empty('New student orders will appear here.')}`;
+  ${orders.length ? orders.slice(0, 5).map(orderCard).join('') : empty('New student orders will appear here.')}`;
 }
 let adminFilter = 'all';
 function adminOrders() {
-  const list = state.orders.filter(o => adminFilter === 'all' || (adminFilter === 'active' ? !['Delivered', 'Cancelled'].includes(o.status) : o.status === 'Delivered'));
+  const list = activeOrders().filter(o => adminFilter === 'all' || (adminFilter === 'active' ? !['Delivered', 'Cancelled'].includes(o.status) : o.status === 'Delivered'));
   const tabs = [['all', 'All'], ['active', 'Active'], ['done', 'Delivered']];
-  return `${pageHead('Orders', 'Update status and assign delivery agents')}
+  return `${pageHead(state.business === 'drinks' ? 'Drinks orders' : 'Orders', 'Update status and assign delivery agents')}
   <div class="tabs">${tabs.map(([v, t]) => `<button class="tab ${adminFilter === v ? 'active' : ''}" data-action="admin-filter" data-filter="${v}">${t}</button>`).join('')}</div>
   ${list.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>Order</th><th>Student</th><th>Location</th><th>Items</th><th>Total</th><th>Status</th><th>Agent</th></tr></thead><tbody>${list.map(o => `<tr>
     <td><strong>${esc(o.id)}</strong><br><span class="muted">${new Date(o.createdAt).toLocaleTimeString()}</span></td>
@@ -164,14 +183,15 @@ function adminOrders() {
     <td><select class="select-small" data-agent="${o.id}">${AGENTS.map(a => `<option ${o.agent === a ? 'selected' : ''}>${a}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>` : empty('No orders to show.')}`;
 }
 function adminMenu() {
-  return `${pageHead('Menu', 'Edit photos, prices, stock — and choose the one meal served today', `<button class="primary-btn" data-action="add-food">+ Add food</button>`)}
-  <div class="table-wrap"><table class="data-table menu-table"><thead><tr><th>Dish</th><th>Price</th><th>Stock</th><th>Serve today</th><th></th></tr></thead><tbody>${state.menu.map(item => `<tr>
+  const items = activeMenu(), itemLabel = state.business === 'drinks' ? 'drink' : 'food item';
+  return `${pageHead(state.business === 'drinks' ? 'Drinks menu' : 'Menu', state.business === 'drinks' ? 'Add and manage today’s drink options' : 'Edit photos, prices, stock — and choose the one meal served today', `<button class="primary-btn" data-action="add-food">+ Add ${itemLabel}</button>`)}
+  <div class="table-wrap"><table class="data-table menu-table"><thead><tr><th>${state.business === 'drinks' ? 'Drink' : 'Dish'}</th><th>Price</th><th>Stock</th><th>Available today</th><th></th></tr></thead><tbody>${items.map(item => `<tr>
     <td><div class="dish-cell"><button class="thumb thumb-btn" data-action="edit-food" data-id="${item.id}" aria-label="Change photo of ${esc(item.name)}" title="Change photo">${photo(item)}<span class="thumb-cam">${ico('image')}</span></button><div><strong>${esc(item.name)}</strong><br><span class="muted">${esc(item.desc)}</span></div></div></td>
     <td data-label="Price"><label class="inline-input">₹<input aria-label="Price for ${esc(item.name)}" type="number" min="1" value="${item.price}" data-price="${item.id}"></label></td>
     <td data-label="Stock"><input class="stock-input" aria-label="Stock for ${esc(item.name)}" type="number" min="0" placeholder="∞" value="${item.stock ?? ''}" data-stock="${item.id}"></td>
     <td data-label="Today"><button class="toggle ${item.available ? 'on' : ''}" data-action="toggle-food" data-id="${item.id}" aria-label="Toggle ${esc(item.name)}" aria-pressed="${item.available}"></button></td>
     <td><div class="row-actions"><button class="icon-btn" data-action="edit-food" data-id="${item.id}" aria-label="Edit ${esc(item.name)}" title="Edit">${ico('edit')}</button><button class="icon-btn danger" data-action="delete-food" data-id="${item.id}" aria-label="Delete ${esc(item.name)}" title="Delete">${ico('trash')}</button></div></td></tr>`).join('')}</tbody></table></div>
-  <p class="footer-note">Tap a photo or the pencil to edit name, description, photo, price and stock. Leave stock empty for unlimited. Stock reduces automatically when orders are placed and returns if an order is cancelled.</p>`;
+  <p class="footer-note">Tap a photo or the pencil to edit the ${itemLabel} name, description, photo, price and stock. Leave stock empty for unlimited. Stock reduces automatically when orders are placed and returns if an order is cancelled.</p>`;
 }
 const hhmm = ([h, m]) => String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 function adminShifts() {
@@ -211,7 +231,7 @@ function readPhoto(file) {
   });
 }
 function foodModal(id) {
-  const item = id ? state.menu.find(x => x.id === id) : null; pendingImage = undefined; pendingBlob = undefined;
+  const item = id ? activeMenu().find(x => x.id === id) : null; pendingImage = undefined; pendingBlob = undefined;
   const preview = item?.image ? `<img src="${esc(imgSrc(item.image))}" alt="">` : `<span class="ph">${esc((item?.name || '+')[0])}</span>`;
   openModal(`${modalHead(item ? 'Edit food item' : 'Add food item')}<form id="food-form" class="form-grid" data-id="${item ? item.id : ''}">
     <div class="field full-width"><label>Photo</label><div class="photo-edit"><div class="photo-preview" id="photo-preview">${preview}</div>
@@ -236,23 +256,24 @@ function deliveryCard(o, compact = false) {
   ${go ? `<a class="call-link" href="tel:${esc(o.customer.phone)}">Call ${esc(o.customer.phone)}</a>` : ''}${action}</article>`;
 }
 function deliveryPage() {
+  const orders = activeOrders();
   if (state.page === 'delivery-history') {
-    const done = state.orders.filter(o => o.status === 'Delivered');
-    return `${pageHead('Completed', 'Recently delivered orders')}${done.length ? done.map(o => deliveryCard(o)).join('') : empty('Completed deliveries will appear here.')}`;
+    const done = orders.filter(o => o.status === 'Delivered');
+    return `${pageHead(state.business === 'drinks' ? 'Drinks completed' : 'Completed', 'Recently delivered orders')}${done.length ? done.map(o => deliveryCard(o)).join('') : empty('Completed deliveries will appear here.')}`;
   }
-  const active = state.orders.filter(o => !['Delivered', 'Cancelled'].includes(o.status));
+  const active = orders.filter(o => !['Delivered', 'Cancelled'].includes(o.status));
   const floorN = o => Number(o.customer.floor) || floorOf(o.customer.room);
   const floors = [...new Set(active.map(floorN))].sort((x, y) => y - x);          // floors: highest first
   const col = (b, list) => `<div class="block-col"><h4>Block ${b}<span>${list.length}</span></h4>${list.length
     ? list.sort((x, y) => roomNum(y.customer.room) - roomNum(x.customer.room)).map(o => deliveryCard(o, true)).join('')   // rooms: highest first
     : '<div class="none">No orders</div>'}</div>`;
   const sections = floors.map(f => { const here = active.filter(o => floorN(o) === f); return `<section class="floor-group"><div class="floor-head"><h3>Floor ${f}</h3><span>${here.length} ${here.length === 1 ? 'order' : 'orders'}</span></div><div class="block-cols">${['A', 'B'].map(b => col(b, here.filter(o => o.customer.block === b))).join('')}</div></section>`; }).join('');
-  return `${pageHead('Deliveries', 'Top floor first · Block A and B · highest room first')}${sections || empty('No active deliveries right now.')}`;
+  return `${pageHead(state.business === 'drinks' ? 'Drinks deliveries' : 'Deliveries', 'Top floor first · Block A and B · highest room first')}${sections || empty('No active deliveries right now.')}`;
 }
 
 /* ---------------- shell ---------------- */
 function pageContent() {
-  if (state.role === 'student') return state.page === 'orders' ? studentOrders() : state.page === 'profile' ? profilePage() : menuPage();
+  if (state.role === 'student') return state.page === 'orders' ? studentOrders() : state.page === 'drinks' ? drinksPage() : state.page === 'profile' ? profilePage() : menuPage();
   if (state.role === 'admin') return state.page === 'orders' ? adminOrders() : state.page === 'menu-admin' ? adminMenu() : state.page === 'shifts-admin' ? adminShifts() : state.page === 'game-admin' ? adminGame() : adminOverview();
   return deliveryPage();
 }
@@ -373,9 +394,10 @@ async function submitOrder(btn) {
 
 /* ---------------- events ---------------- */
 function changeQty(id, d) {
-  const item = state.menu.find(x => x.id === id); if (!item) return;
-  state.cart = { [id]: Math.min(maxQty(item), Math.max(1, (state.cart[id] || 1) + d)) };
-  persist(); refreshCart();
+  const item = findMenuItem(id); if (!item) return;
+  const next = Math.min(maxQty(item), Math.max(0, (state.cart[id] || 0) + d));
+  if (next) state.cart = { ...state.cart, [id]: next }; else { const cart = { ...state.cart }; delete cart[id]; state.cart = cart; }
+  persist(); if (state.page === 'drinks') render(); else refreshCart();
 }
 /** Runs a server action, then reloads data and redraws. Errors are shown and the screen is re-synced from the server. */
 async function run(fn, okMsg) {
@@ -386,29 +408,37 @@ document.addEventListener('click', async e => {
   const b = e.target.closest('[data-action]'); if (!b) return;
   const id = b.dataset.id;
   switch (b.dataset.action) {
-    case 'nav': state.page = b.dataset.page; state.query = ''; render(); break;
+    case 'nav': {
+      const page = b.dataset.page;
+      const nextBusiness = page === 'drinks' ? 'drinks' : page === 'menu' ? 'food' : state.business;
+      if (nextBusiness !== state.business) { state.cart = {}; state.business = nextBusiness; }
+      state.page = page; state.query = ''; render(); break;
+    }
+    case 'student-orders-filter': state.ordersTab = b.dataset.filter; render(); break;
     case 'qty': changeQty(id, Number(b.dataset.delta)); break;
     case 'close-modal': closeModal(); break;
     case 'checkout': if (!bookingShift()) { showToast('Booking is closed right now'); refreshCart(); break; } closeModal(); checkoutModal(); break;
     case 'skip-game': if (readCheckout()) { state.challengeId = null; state.cloudGame = null; reviewModal(); } break;
     case 'place-order': submitOrder(b); break;
-    case 'trial-game': if (PORTAL === 'admin') launchTrialGame(); break;
-    case 'replay-all-students': if (PORTAL === 'admin') { if (CLOUD) run(() => cloud.grantGameReplayAll(), count => count ? `Another chance granted to ${count} student${count === 1 ? '' : 's'}` : 'No played students need another chance'); else showToast('Student game access requires the connected portal.'); } break;
+    case 'trial-game': if (PORTAL_ROLE === 'admin') launchTrialGame(); break;
+    case 'replay-all-students': if (PORTAL_ROLE === 'admin') { if (CLOUD) run(() => cloud.grantGameReplayAll(), count => count ? `Another chance granted to ${count} student${count === 1 ? '' : 's'}` : 'No played students need another chance'); else showToast('Student game access requires the connected portal.'); } break;
     case 'add-food': foodModal(); break;
     case 'edit-food': foodModal(id); break;
     case 'remove-photo': pendingImage = null; document.getElementById('photo-preview').innerHTML = '<span class="ph">–</span>'; b.remove(); break;
-    case 'delete-food': { const it = state.menu.find(x => x.id === id); if (it && confirm(`Delete “${it.name}” from the menu? Past orders keep their record.`)) { if (CLOUD) await run(() => cloud.deleteMenuItem(id), 'Dish deleted'); else { removeItem(id); render(); showToast('Dish deleted'); } } break; }
+    case 'delete-food': { const it = activeMenu().find(x => x.id === id); if (it && confirm(`Delete “${it.name}” from the menu? Past orders keep their record.`)) { if (CLOUD) await run(() => cloud.deleteMenuItem(id), 'Menu item deleted'); else { removeItem(id); render(); showToast('Menu item deleted'); } } break; }
     case 'toggle-food': {
-      const f = state.menu.find(x => x.id === id); if (!f) break;
+      const f = activeMenu().find(x => x.id === id); if (!f) break;
       const on = !f.available; state.cart = {};
-      if (CLOUD) { await run(() => cloud.setTodayMeal(on ? id : null), on ? `${f.name} is today’s meal` : 'Nothing served today'); break; }
-      state.menu.forEach(x => x.available = false); f.available = on; persist(); render(); showToast(on ? `${f.name} is today’s meal` : 'Nothing served today'); break;
+      if (CLOUD) { await run(() => state.business === 'drinks' ? cloud.setDrinkAvailability(id, on) : cloud.setTodayMeal(on ? id : null), on ? `${f.name} is available today` : `${f.name} is unavailable`); break; }
+      if (state.business === 'food') state.menu.forEach(x => x.available = false);
+      f.available = on; persist(); render(); showToast(on ? `${f.name} is available today` : `${f.name} is unavailable`); break;
     }
     case 'admin-filter': adminFilter = b.dataset.filter; render(); break;
     case 'pickup': if (CLOUD) await run(() => cloud.setStatus(id, 'Out for delivery')); else { updateOrder(id, { status: 'Out for delivery' }); render(); } break;
     case 'deliver': if (CLOUD) await run(() => cloud.setStatus(id, 'Delivered'), 'Marked delivered'); else { updateOrder(id, { status: 'Delivered' }); render(); showToast('Marked delivered'); } break;
     case 'cancel-order': if (confirm('Cancel this order?')) { if (CLOUD) await run(() => cloud.cancelMyOrder(id), 'Order cancelled'); else { updateOrder(id, { status: 'Cancelled' }); render(); showToast('Order cancelled'); } } break;
-    case 'signout': if (CLOUD) await cloud.signOut(); else { staffLock(PORTAL); authMsg = ''; authScreen(); } break;
+    case 'signout': if (CLOUD) await cloud.signOut(); else { staffLock(PORTAL_ROLE); authMsg = ''; authScreen(); } break;
+    case 'retry-student': location.reload(); break;
     case 'auth-mode': authMode = authMode === 'signin' ? 'signup' : 'signin'; authMsg = ''; authScreen(); break;
   }
 });
@@ -424,9 +454,9 @@ app.addEventListener('change', async e => {
   const t = e.target;
   if (t.dataset.orderStatus) { if (CLOUD) await run(() => cloud.setStatus(t.dataset.orderStatus, t.value)); else { updateOrder(t.dataset.orderStatus, { status: t.value }); render(); } }
   if (t.dataset.agent) { if (CLOUD) await run(() => cloud.setAgent(t.dataset.agent, t.value), 'Agent assigned'); else { updateOrder(t.dataset.agent, { agent: t.value }); showToast('Agent assigned'); } }
-  if (t.dataset.price) { const item = state.menu.find(x => x.id === t.dataset.price), v = Number(t.value); if (item && v > 0) { if (CLOUD) await run(() => cloud.patchItem(item.id, { price: v }), 'Price updated'); else { item.price = v; persist(); showToast('Price updated'); } } else render(); }
-  if (t.dataset.stock !== undefined && CLOUD) { const item = state.menu.find(x => x.id === t.dataset.stock); if (item) await run(() => cloud.patchItem(item.id, { stock: t.value === '' ? null : Math.max(0, Math.floor(Number(t.value))) }), 'Stock updated'); return; }
-  if (t.dataset.stock !== undefined) { const item = state.menu.find(x => x.id === t.dataset.stock); if (item) { item.stock = t.value === '' ? null : Math.max(0, Math.floor(Number(t.value))); if (item.stock != null && state.cart[item.id] > item.stock) { item.stock ? state.cart[item.id] = item.stock : delete state.cart[item.id]; } persist(); render(); showToast('Stock updated'); } }
+  if (t.dataset.price) { const item = activeMenu().find(x => x.id === t.dataset.price), v = Number(t.value); if (item && v > 0) { if (CLOUD) await run(() => cloud.patchItem(item.id, { price: v }), 'Price updated'); else { item.price = v; persist(); showToast('Price updated'); } } else render(); }
+  if (t.dataset.stock !== undefined && CLOUD) { const item = activeMenu().find(x => x.id === t.dataset.stock); if (item) await run(() => cloud.patchItem(item.id, { stock: t.value === '' ? null : Math.max(0, Math.floor(Number(t.value))) }), 'Stock updated'); return; }
+  if (t.dataset.stock !== undefined) { const item = activeMenu().find(x => x.id === t.dataset.stock); if (item) { item.stock = t.value === '' ? null : Math.max(0, Math.floor(Number(t.value))); if (item.stock != null && state.cart[item.id] > item.stock) { item.stock ? state.cart[item.id] = item.stock : delete state.cart[item.id]; } persist(); render(); showToast('Stock updated'); } }
 });
 document.addEventListener('submit', e => {
   e.preventDefault(); const f = e.target, d = Object.fromEntries(new FormData(f).entries());
@@ -464,16 +494,19 @@ document.addEventListener('submit', e => {
 
 /* ---------------- cloud: sign-in, startup, live refresh ---------------- */
 let authMode = 'signin', authMsg = '', lastSig = '', pollTimer = 0;
+function studentStartupError(message) {
+  app.innerHTML = `<div class="auth"><div class="auth-card">${brand()}<h1>Yomato is starting</h1><p class="auth-sub">${esc(message || 'We could not connect to the student dashboard yet.')}</p><button class="primary-btn full big" data-action="retry-student">Try again</button></div></div>`;
+}
 function authScreen() {
   const staff = PORTAL !== 'student', su = !staff && authMode === 'signup';
   app.innerHTML = `<div class="auth"><div class="auth-card">${brand()}
-    <h1>${su ? 'Create your account' : staff ? (PORTAL === 'admin' ? 'Admin sign in' : 'Delivery sign in') : 'Welcome'}</h1><p class="auth-sub">${su ? 'A few details so we can bring your meal to the right door.' : staff ? 'Staff only. Enter your ID and password.' : 'Please sign in to reserve today’s meal.'}</p>
+    <h1>${su ? 'Create your account' : staff ? (PORTAL_ROLE === 'admin' ? `${BUSINESS === 'drinks' ? 'Drinks admin' : 'Admin'} sign in` : `${BUSINESS === 'drinks' ? 'Drinks delivery' : 'Delivery'} sign in`) : 'Welcome'}</h1><p class="auth-sub">${su ? 'A few details so we can bring your meal to the right door.' : staff ? 'Staff only. Enter your email and password.' : 'Please sign in to reserve today’s meal.'}</p>
     <form id="auth-form" class="form-grid">
       ${su ? `<div class="field full-width"><label>Full name</label><input name="name" autocomplete="name" required></div>
       <div class="field full-width"><label>Mobile number</label><input name="phone" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="10-digit mobile number" autocomplete="tel" required></div>
       <div class="field"><label>Block</label><select name="block"><option value="A">Block A</option><option value="B">Block B</option></select></div>
       <div class="field"><label>Room number</label><input name="room" inputmode="numeric" pattern="[0-9]{3,4}" maxlength="4" placeholder="Enter your room number" required></div>` : ''}
-      ${!CLOUD && staff ? `<div class="field full-width"><label>${PORTAL === 'admin' ? 'Admin ID' : 'Delivery ID'}</label><input name="email" autocomplete="username" autocapitalize="characters" required></div>` : `<div class="field full-width"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>`}
+      <div class="field full-width"><label>${!CLOUD && staff ? `${PORTAL_ROLE === 'admin' ? 'Admin' : 'Delivery'} ID` : 'Email'}</label><input name="email" ${!CLOUD && staff ? '' : 'type="email"'} autocomplete="${!CLOUD && staff ? 'username' : 'email'}" ${!CLOUD && staff ? 'autocapitalize="characters"' : ''} required></div>
       <div class="field full-width"><label>Password</label><input name="password" type="password" ${!CLOUD && staff ? '' : 'minlength="6" '}autocomplete="${su ? 'new-password' : 'current-password'}" required></div>
       ${authMsg ? `<p class="auth-msg full-width" role="status">${esc(authMsg)}</p>` : ''}
       <div class="field full-width"><button class="primary-btn full big" type="submit">${su ? 'Create account' : 'Sign in'}</button></div>
@@ -486,21 +519,21 @@ async function doAuth(d, btn) {
     if (authMode === 'signup' && PORTAL === 'student') {
       const signedIn = await cloud.signUp({ email: d.email.trim(), password: d.password, name: d.name.trim(), phone: d.phone, block: d.block, room: d.room });
       if (!signedIn) { authMode = 'signin'; authMsg = 'Account created. Check your email to confirm it, then sign in.'; authScreen(); return; }
-    } else if (!CLOUD) { staffLogin(PORTAL, d.email, d.password); render(); return; }
+    } else if (!CLOUD) { staffLogin(PORTAL_ROLE, d.email, d.password); render(); return; }
     else await cloud.signIn(d.email.trim(), d.password);
     await enterApp();
   } catch (e) { authMsg = e.message; authScreen(); }
 }
 async function enterApp() {
   const p = await cloud.loadProfile(); if (!p) { authScreen(); return; }
-  if (p.role !== PORTAL) {   // wrong door: show where this account belongs instead of the wrong portal
-    const home = PORTAL_URL[p.role] || PORTAL_URL.student;
+  if (p.role !== PORTAL_ROLE || (PORTAL_ROLE !== 'student' && !['both', BUSINESS].includes(p.business || 'food'))) {   // wrong door: keep staff access limited to its assigned service
+    const home = p.role === 'admin' || p.role === 'delivery' ? PORTAL_URL[p.business === 'drinks' ? `${p.business}-${p.role}` : p.role] : PORTAL_URL.student;
     app.innerHTML = `<div class="auth"><div class="auth-card">${brand()}<h1>Wrong portal</h1><p class="auth-sub">This account is a ${esc(p.role)} account and can't open the ${PORTAL} portal.</p><a class="primary-btn full big" href="${home}" style="text-align:center;display:block;text-decoration:none">Go to the ${esc(p.role)} portal</a><button class="secondary-btn full" data-action="signout">Sign out</button></div></div>`;
     return;
   }
   state.profile = { name: p.name, phone: p.phone, block: p.block || 'A', floor: p.floor, room: p.room, email: p.email };
   state.gamePlayed = p.gamePlayed;
-  state.role = PORTAL; state.page = HOME[PORTAL];
+  state.business = BUSINESS; state.role = PORTAL_ROLE; state.page = HOME[PORTAL];
   lastSig = await cloud.refreshData();
   render();
   clearInterval(pollTimer); pollTimer = setInterval(poll, 2000);
@@ -521,8 +554,7 @@ if (CLOUD) {
     if (PORTAL === 'student') { if (!s) await cloud.signInGuest(); return enterApp(); }   // students: no login screen
     if (s?.user?.is_anonymous) { await sb.auth.signOut({ scope: 'local' }); s = null; }  // a student's guest session must not block the staff sign-in
     return s ? enterApp() : authScreen();
-  })().catch(e => { authMsg = PORTAL === 'student' ? 'Could not start. Check your connection, and make sure Anonymous sign-ins is switched on in Supabase (Authentication → Sign In / Providers).' : 'Could not reach the server. Check your connection and refresh.'; authScreen(); });
-} else if (PORTAL !== 'student' && !staffUnlocked(PORTAL)) authScreen();
+  })().catch(e => { if (PORTAL === 'student') studentStartupError('Please refresh once. If this continues, Anonymous sign-ins needs to be enabled in Supabase.'); else { authMsg = 'Could not reach the server. Check your connection and refresh.'; authScreen(); } });
+} else if (PORTAL !== 'student' && !staffUnlocked(PORTAL_ROLE)) authScreen();
 else render();
 if (import.meta.env.PROD && 'serviceWorker' in navigator && location.protocol.startsWith('http')) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
-
