@@ -31,10 +31,21 @@ function load() {
 }
 const saved = CLOUD ? { cart: load().cart } : load();   // cloud mode: menu/orders come from the server, never from this device
 if (Array.isArray(saved.shifts) && saved.shifts.length) { try { setShifts(saved.shifts); } catch { /* keep defaults */ } }
-const menu = CLOUD ? [] : (saved.menu || seedMenu).map(m => {
+const allMenu = CLOUD ? [] : (saved.menu || seedMenu).map(m => {
   const seed = seedMenu.find(s => s.id === m.id);
   return { stock: null, ...m, image: (seed && /^[a-z-]+(-cut\.webp|-3d\.webp|-photo\.webp|\.jpg|\.png)$/.test(m.image || '')) ? seed.image : (m.image || seed?.image || null) };
 });
+const menu = allMenu.filter(m => (m.business || 'food') === 'food');
+const localDrinkExamples = [
+  ['demo-lemon-juice', 'Fresh Lemon Juice', 'Fresh lemon, chilled water and a touch of sweetness', 25],
+  ['demo-orange-juice', 'Orange Juice', 'Freshly squeezed seasonal oranges', 35],
+  ['demo-watermelon-juice', 'Watermelon Juice', 'Chilled watermelon blended fresh', 30],
+  ['demo-mango-juice', 'Mango Juice', 'Sweet mango blended to order', 35],
+  ['demo-lime-soda', 'Fresh Lime Soda', 'Lime with sparkling soda, sweet or salted', 25],
+  ['demo-mango-lassi', 'Mango Lassi', 'Yogurt blended with ripe mango', 40],
+].map(([id, name, desc, price]) => ({ id, name, desc, price, image: null, business: 'drinks', available: true, stock: 20 }));
+const drinksMenu = allMenu.filter(m => m.business === 'drinks');
+if (!CLOUD && !saved.drinksSeeded) drinksMenu.push(...localDrinkExamples);
 const localGameCycleKey = () => `${new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())}|${JSON.stringify(shiftConfig())}`;
 const initialGameCycleKey = localGameCycleKey();
 const savedGameMin = Math.max(0, Math.floor(Number(saved.gameConfig?.minDiscount ?? 4) || 0));
@@ -45,8 +56,8 @@ let live = false;
 for (const m of menu) { if (m.available) { if (live) m.available = false; live = true; } }
 
 export const state = {
-  role: 'student', page: 'menu', menuTab: 'all', query: '',
-  menu, orders: saved.orders || [], cart: saved.cart || {},
+  role: 'student', page: 'menu', menuTab: 'all', query: '', business: 'food', drinksLaunchAt: saved.drinksLaunchAt || (CLOUD ? null : Date.now() + 37 * 3600 * 1000), ordersTab: 'food',
+  menu, drinksMenu, orders: saved.orders || [], cart: saved.cart || {},
   profile: saved.profile || { name: '', phone: '', block: 'A', floor: '1', room: '' },
   challenges: saved.challenges || {},
   gamePlayed: saved.gameCycleKey ? saved.gameCycleKey === initialGameCycleKey && !!saved.gamePlayed : !!saved.gamePlayed || Object.keys(saved.challenges || {}).length > 0,
@@ -59,7 +70,7 @@ export const state = {
   placing: false,
 };
 
-const snapshot = () => JSON.stringify(CLOUD ? { cart: state.cart } : { menu: state.menu, orders: state.orders, cart: state.cart, profile: state.profile, challenges: state.challenges, gamePlayed: state.gamePlayed, gameCycleKey: localGameCycleKey(), gameConfig: state.gameConfig, shifts: shiftConfig() });
+const snapshot = () => JSON.stringify(CLOUD ? { cart: state.cart } : { menu: [...state.menu.map(x => ({ ...x, business: 'food' })), ...state.drinksMenu.map(x => ({ ...x, business: 'drinks' }))], drinksSeeded: true, drinksLaunchAt: state.drinksLaunchAt, orders: state.orders, cart: state.cart, profile: state.profile, challenges: state.challenges, gamePlayed: state.gamePlayed, gameCycleKey: localGameCycleKey(), gameConfig: state.gameConfig, shifts: shiftConfig() });
 let persistTimer = 0;
 export function persist() {
   clearTimeout(persistTimer);
@@ -72,7 +83,8 @@ export function persist() {
 window.addEventListener('pagehide', () => { clearTimeout(persistTimer); try { localStorage.setItem(KEY, snapshot()); } catch {} });
 
 export const money = n => '₹' + Number(n || 0).toFixed(0);
-export const cartEntries = () => Object.entries(state.cart).map(([id, qty]) => ({ item: state.menu.find(x => x.id === id), qty })).filter(x => x.item && x.qty > 0);
+export const findMenuItem = id => [...state.menu, ...state.drinksMenu].find(x => x.id === id);
+export const cartEntries = () => Object.entries(state.cart).map(([id, qty]) => ({ item: findMenuItem(id), qty })).filter(x => x.item && x.qty > 0);
 export const cartCount = () => cartEntries().reduce((a, x) => a + x.qty, 0);
 export const subtotal = () => cartEntries().reduce((a, x) => a + x.item.price * x.qty, 0);
 export const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
@@ -123,7 +135,7 @@ export function placeOrder({ key, customer, challengeId }) {
   const discount = challengeId ? (state.pendingGameReward?.id === challengeId && state.pendingGameReward.discount != null ? Math.min(sub, state.pendingGameReward.discount) : previewDiscount(challengeId)) : 0;   // never taken from the client
   if (challengeId && state.challenges[challengeId]) state.challenges[challengeId].used = true;
   const order = {
-    id: 'AN-' + String(Date.now()).slice(-6), key, shift: { id: shift.id, label: shift.label, delivery: shift.del }, createdAt: Date.now(), customer, gameChallengeId: challengeId || null,
+    id: 'AN-' + String(Date.now()).slice(-6), key, business: state.business || 'food', shift: { id: shift.id, label: shift.label, delivery: shift.del }, createdAt: Date.now(), customer, gameChallengeId: challengeId || null,
     items: entries.map(({ item, qty }) => ({ id: item.id, name: item.name, qty, price: item.price })),
     subtotal: sub, discount, total: Math.max(0, sub - discount), status: 'Placed', agent: 'Unassigned',
   };
@@ -138,7 +150,7 @@ export function updateOrder(id, patch) {
   const o = state.orders.find(x => x.id === id);
   if (!o || o.status === 'Cancelled') return;   // cancelled orders are final (stock already restored)
   if (patch.status === 'Cancelled' && o.status !== 'Cancelled') {
-    for (const i of o.items) { const m = state.menu.find(x => x.id === i.id); if (m && m.stock != null) m.stock += i.qty; }
+    for (const i of o.items) { const m = findMenuItem(i.id); if (m && m.stock != null) m.stock += i.qty; }
     const challenge = o.gameChallengeId && state.challenges[o.gameChallengeId];
     if (challenge?.result) { challenge.used = false; state.pendingGameReward = { id: challenge.id, ...challenge.result, minDiscount: challenge.minDiscount ?? state.gameConfig.minDiscount, maxDiscount: challenge.maxDiscount ?? state.gameConfig.maxDiscount, discount: o.discount }; }
   }
@@ -148,17 +160,17 @@ export function updateOrder(id, patch) {
 
 // ---- Admin: menu management -----------------------------------------------------------------------------
 export function saveItem(id, patch) {
-  const m = state.menu.find(x => x.id === id); if (!m) return null;
+  const m = findMenuItem(id); if (!m) return null;
   Object.assign(m, patch);
   if (state.cart[id] && m.stock != null && state.cart[id] > m.stock) { m.stock ? state.cart[id] = m.stock : delete state.cart[id]; }
   persist(); return m;
 }
 export function addItem(data) {
-  const m = { id: 'custom-' + uid(), available: false, ...data };
-  state.menu.push(m); persist(); return m;
+  const m = { id: 'custom-' + uid(), available: false, business: state.business || 'food', ...data };
+  (m.business === 'drinks' ? state.drinksMenu : state.menu).push(m); persist(); return m;
 }
 export function removeItem(id) {
-  state.menu = state.menu.filter(x => x.id !== id); delete state.cart[id]; persist();
+  state.menu = state.menu.filter(x => x.id !== id); state.drinksMenu = state.drinksMenu.filter(x => x.id !== id); delete state.cart[id]; persist();
 }
 export function syncGameCycle() {
   const key = localGameCycleKey();
