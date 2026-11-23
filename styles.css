@@ -261,7 +261,7 @@ h1,h2,h3,.brand,.stat .value{font-family:var(--head)}
 @media (max-width:760px){.role-student .wrap{padding-top:28px}.role-student .topbar{background:rgba(12,36,29,.85)}}
 #order-box{display:flex;flex-direction:column;gap:16px}
 .game-promo-note{margin:-8px 0 0;text-align:center;color:var(--accent);font-size:13px;font-weight:700;line-height:1.45}
-.juice-audience{margin:-6px 0 0;text-align:center;color:var(--muted);font-size:12px;letter-spacing:.4px}
+.audience-note{margin:-6px 0 0;text-align:center;color:var(--muted);font-size:12px;letter-spacing:.4px}
 .drinks-coming-soon,.drinks-menu{display:block;min-height:calc(100dvh - 64px);padding:clamp(28px,6vw,72px) 22px calc(120px + var(--safe-b))}
 .drinks-coming-soon .today-body,.drinks-menu .today-body{max-width:780px;margin:0 auto}
 .drinks-coming-soon .today-body{min-height:min(62dvh,620px);display:flex;flex-direction:column;justify-content:center;gap:22px}
