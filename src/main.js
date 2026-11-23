@@ -110,21 +110,21 @@ setInterval(() => {
 }, 1000);
 function menuPage() {
   const item = todayItem();
-  if (!item) return `<section class="today closed"><div class="today-body"><p class="eyebrow"><span>Today</span></p><h1>We’re updating today’s menu.</h1><p class="desc">Please check back soon while we prepare the menu.</p><p class="audience-note">Available only for BS-13 residents.</p></div></section>`;
-  if (item.stock === 0) return `<section class="today closed sold-out"><div class="today-body"><p class="eyebrow"><span>Today · Fully booked</span></p><h1>All available plates have been booked.</h1><p class="desc">Thank you for your interest. The next booking window opens in:</p><p class="audience-note">Available only for BS-13 residents.</p>${counterHTML(true)}</div></section>`;
+  if (!item) return `<section class="today closed"><div class="today-body"><p class="eyebrow"><span>Today</span></p><h1>We’re updating today’s menu.</h1><p class="desc">Please check back soon while we prepare the menu.</p></div></section>`;
+  if (item.stock === 0) return `<section class="today closed sold-out"><div class="today-body"><p class="eyebrow"><span>Today · Fully booked</span></p><h1>All available plates have been booked.</h1><p class="desc">Thank you for your interest. The next booking window opens in:</p>${counterHTML(true)}</div></section>`;
   state.cart = { [item.id]: Math.min(state.cart[item.id] || 1, maxQty(item)) || 1 };
   const day = new Date().toLocaleDateString(undefined, { weekday: 'long' });
   return `<section class="today"><div class="today-art"><div class="arch"><div class="arch-in">${photo(item)}</div></div></div>
-  <div class="today-body"><p class="eyebrow"><span>Today’s meal · ${day}</span></p><h1>${esc(item.name)}</h1><p class="desc">${esc(item.desc)}</p><p class="audience-note">Available only for BS-13 residents.</p><div class="orn" aria-hidden="true"><i></i></div>
+  <div class="today-body"><p class="eyebrow"><span>Today’s meal · ${day}</span></p><h1>${esc(item.name)}</h1><p class="desc">${esc(item.desc)}</p><div class="orn" aria-hidden="true"><i></i></div>
   <div id="order-box">${item.stock != null && item.stock <= 5 ? `<div class="stock-warning" role="status">ONLY ${item.stock} LEFT</div>` : ''}${orderBox(item)}</div></div></section>`;
 }
 function drinksPage() {
   const config = state.drinksConfig || { enabled: false, nextOpenAt: state.drinksLaunchAt };
   const launchAt = config.nextOpenAt ? new Date(config.nextOpenAt).getTime() : Date.now() + 37 * 3600 * 1000;
   const remaining = config.enabled ? 0 : Math.max(0, Math.ceil((launchAt - Date.now()) / 1000));
-  if (remaining) return `<section class="today drinks-coming-soon"><div class="today-body"><p class="eyebrow"><span>Fresh juice</span></p><h1>Fresh juice will be available soon.</h1><p class="desc">We’re getting everything ready for you.</p><p class="audience-note">Available only for BS-13 residents.</p><div class="drinks-countdown"><span>Available in</span><strong id="drinks-counter">${hms(remaining)}</strong></div></div></section>`;
+  if (remaining) return `<section class="today drinks-coming-soon"><div class="today-body"><p class="eyebrow"><span>Fresh juice</span></p><h1>Fresh juice will be available soon.</h1><p class="desc">We’re getting everything ready for you.</p><div class="drinks-countdown"><span>Available in</span><strong id="drinks-counter">${hms(remaining)}</strong></div></div></section>`;
   const items = state.drinksMenu.filter(item => item.available && (item.stock == null || item.stock > 0));
-  const gamePromo = `<p class="audience-note">Available only for BS-13 residents.</p>${state.gameConfig.enabled && !state.gamePlayed ? `<p class="game-promo-note">Play the game for a chance to get up to ${money(state.gameConfig.maxDiscount)} off!</p>` : ''}`;
+  const gamePromo = state.gameConfig.enabled && !state.gamePlayed ? `<p class="game-promo-note">Play the game for a chance to get up to ${money(state.gameConfig.maxDiscount)} off!</p>` : '';
   return `<section class="today drinks-menu"><div class="today-body"><p class="eyebrow"><span>Fresh juice · Today</span></p><h1>Fresh juice</h1><p class="desc">Freshly prepared juice, delivered to your room.</p>${items.length ? `<div class="drinks-grid">${items.map(item => `<article class="drink-card"><div class="drink-photo">${photo(item)}</div><div class="drink-card-info"><h2>${esc(item.name)}</h2><p>${esc(item.desc || '')}</p><div class="drink-card-foot"><strong>${money(item.price)}</strong><div class="qty-control"><button data-action="qty" data-id="${esc(item.id)}" data-delta="-1" aria-label="One less" ${!state.cart[item.id] ? 'disabled' : ''}>−</button><span>${state.cart[item.id] || 0}</span><button data-action="qty" data-id="${esc(item.id)}" data-delta="1" aria-label="One more" ${state.cart[item.id] >= maxQty(item) ? 'disabled' : ''}>+</button></div></div></div></article>`).join('')}</div><button class="primary-btn full big drinks-reserve" data-action="checkout" ${cartCount() ? '' : 'disabled'}>Book juice${cartCount() ? ` · ${cartCount()} item${cartCount() === 1 ? '' : 's'}` : ''}</button>${gamePromo}` : empty('We’re updating today’s fresh juice menu. Please check back soon.')}</div></section>`;
 }
 function orderCard(o, allowCancel = false) {
@@ -323,7 +323,7 @@ function checkoutModal() {
   const previousDiscount = state.pendingGameReward ? discountNow() : 0;
   const canPlayNow = !state.gamePlayed && state.gameConfig.enabled;
   const playLabel = state.pendingGameReward && !canPlayNow ? `Previous discount · ${money(previousDiscount)}` : state.gamePlayed ? 'Your game chance has been used' : !state.gameConfig.enabled ? 'Game temporarily unavailable' : 'Play for a surprise discount';
-  openModal(`${modalHead('Where shall we bring it?')}<form id="checkout-form" class="form-grid">${fields(state.profile)}
+  openModal(`${modalHead('Where shall we bring it?')}<form id="checkout-form" class="form-grid">${fields(state.profile)}<p class="audience-note full-width">Available only for BS-13 residents.</p>
   <div class="field full-width">${state.pendingGameReward && canPlayNow ? `<p class="previous-reward-note">Your previous ${money(previousDiscount)} discount is saved. You may use it now or play this shift’s game.</p>` : ''}<button class="primary-btn full" type="submit" ${canPlayNow ? '' : 'disabled'}>${playLabel}</button><button class="secondary-btn full" type="button" data-action="skip-game">${state.pendingGameReward ? `Continue with previous ${money(previousDiscount)} discount` : 'Continue without playing'}</button></div></form>`, 'checkout');
 }
 function readCheckout() {
