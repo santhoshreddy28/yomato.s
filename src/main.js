@@ -292,7 +292,8 @@ function pageContent() {
 }
 function render() {
   const hero = '';
-  app.innerHTML = `<div class="app-shell role-${state.role}${hero}">${header()}<main class="page" id="page">${pageContent()}</main>${mobileNav()}</div>`;
+  const juiceStyle = state.business === 'drinks' ? '<style>.drinks-coming-soon .today-body,.drinks-menu .today-body{align-items:center!important;text-align:center!important}.drinks-coming-soon .today-body h1,.drinks-menu .today-body h1{font-size:clamp(36px,4.2vw,56px)!important;line-height:1.08!important}.drinks-coming-soon .desc,.drinks-menu .desc{text-align:center!important}</style>' : '';
+  app.innerHTML = `${juiceStyle}<div class="app-shell role-${state.role}${hero}">${header()}<main class="page" id="page">${pageContent()}</main>${mobileNav()}</div>`;
   window.scrollTo(0, 0);
 }
 function refreshCart() {
