@@ -381,11 +381,12 @@ function launchTrialGame() {
 }
 function reviewModal() {
   const total = subtotal(), discount = discountNow();
-  openModal(`${modalHead('Your reservation')}<div class="review-lines">${cartEntries().map(({ item, qty }) => `<div class="cart-row"><strong>${qty} × ${esc(item.name)}</strong><b>${money(qty * item.price)}</b></div>`).join('')}</div>
+  const drinks = state.business === 'drinks', actionLabel = drinks ? 'Confirm booking' : 'Confirm reservation';
+  openModal(`${modalHead(drinks ? 'Your juice booking' : 'Your reservation')}<div class="review-lines">${cartEntries().map(({ item, qty }) => `<div class="cart-row"><strong>${qty} × ${esc(item.name)}</strong><b>${money(qty * item.price)}</b></div>`).join('')}</div>
   <div class="summary-line"><span>Subtotal</span><strong>${money(total)}</strong></div>
   <div class="summary-line"><span>Discount</span><strong class="accent">−${money(discount)}</strong></div>
   <div class="summary-line total"><span>Total</span><strong>${money(total - discount)}</strong></div>
-  <button class="primary-btn full" id="place-order" data-action="place-order" data-label="Confirm reservation · ${money(total - discount)}">Confirm reservation · ${money(total - discount)}</button><p class="footer-note">Payment is settled directly with the hostel kitchen.</p>`, 'review');
+  <button class="primary-btn full" id="place-order" data-action="place-order" data-label="${actionLabel} · ${money(total - discount)}">${actionLabel} · ${money(total - discount)}</button>${drinks ? '' : '<p class="footer-note">Payment is settled directly with the hostel kitchen.</p>'}`, 'review');
 }
 async function submitOrder(btn) {
   if (state.placing) return;
