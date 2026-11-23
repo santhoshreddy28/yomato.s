@@ -67,7 +67,8 @@ export async function refreshData() {
   state.gamePlayed = !!state.gameConfig.played;
   const reward = fail(gameRewardResult);
   state.pendingGameReward = reward ? { id: reward.id, hit: reward.hit, bullseye: reward.bullseye, accuracy: Number(reward.accuracy), arrows: reward.arrows, arrowRewards: Array.isArray(reward.arrow_rewards) ? reward.arrow_rewards.map(Number) : [], minDiscount: Number(reward.min_discount), maxDiscount: Number(reward.max_discount), discount: Number(reward.discount) } : null;
-  return JSON.stringify([state.menu, state.drinksConfig, state.orders, state.gameConfig, state.pendingGameReward, SHIFTS.map(s => s.book + s.del)]);
+  // Include both menus so student sessions redraw immediately after Admin changes juice items.
+  return JSON.stringify([state.menu, state.drinksMenu, state.drinksConfig, state.orders, state.gameConfig, state.pendingGameReward, SHIFTS.map(s => s.book + s.del)]);
 }
 
 /* ---- ordering ---- */
