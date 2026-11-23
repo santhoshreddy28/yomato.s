@@ -7,26 +7,40 @@ set business = 'both'
 from auth.users u
 where u.id = p.id and lower(u.email) in ('admin@yomato.in','delivery@yomato.in');
 
+-- Keep profiles policies non-recursive. A profiles policy that queries
+-- profiles again causes every student dashboard query to fail.
+create or replace function public.my_business()
+returns text language sql stable security definer set search_path = public as $$
+  select coalesce((select p.business from public.profiles p where p.id = auth.uid()), 'food');
+$$;
+revoke all on function public.my_business() from public, anon;
+grant execute on function public.my_business() to authenticated;
+
+drop policy if exists profiles_read on public.profiles;
+create policy profiles_read on public.profiles
+for select to authenticated
+using (id = auth.uid() or public.is_admin());
+
 drop policy if exists menu_read on public.menu_items;
 drop policy if exists menu_admin_insert on public.menu_items;
 drop policy if exists menu_admin_update on public.menu_items;
 drop policy if exists menu_admin_delete on public.menu_items;
 create policy menu_read on public.menu_items for select to authenticated using (
-  public.my_role() = 'student' or business = coalesce((select p.business from public.profiles p where p.id = auth.uid()), 'food') or coalesce((select p.business from public.profiles p where p.id = auth.uid()), 'food') = 'both'
+  public.my_role() = 'student' or business = public.my_business() or public.my_business() = 'both'
 );
 create policy menu_admin_insert on public.menu_items for insert to authenticated with check (
-  public.is_admin() and (business = coalesce((select p.business from public.profiles p where p.id = auth.uid()), 'food') or (select p.business from public.profiles p where p.id = auth.uid()) = 'both')
+  public.is_admin() and (business = public.my_business() or public.my_business() = 'both')
 );
 create policy menu_admin_update on public.menu_items for update to authenticated using (
-  public.is_admin() and (business = coalesce((select p.business from public.profiles p where p.id = auth.uid()), 'food') or (select p.business from public.profiles p where p.id = auth.uid()) = 'both')
+  public.is_admin() and (business = public.my_business() or public.my_business() = 'both')
 ) with check (business in ('food','drinks'));
 create policy menu_admin_delete on public.menu_items for delete to authenticated using (
-  public.is_admin() and (business = coalesce((select p.business from public.profiles p where p.id = auth.uid()), 'food') or (select p.business from public.profiles p where p.id = auth.uid()) = 'both')
+  public.is_admin() and (business = public.my_business() or public.my_business() = 'both')
 );
 
 drop policy if exists orders_read on public.orders;
 create policy orders_read on public.orders for select to authenticated using (
-  user_id = auth.uid() or (public.my_role() in ('admin','delivery') and (business = coalesce((select p.business from public.profiles p where p.id = auth.uid()), 'food') or (select p.business from public.profiles p where p.id = auth.uid()) = 'both'))
+  user_id = auth.uid() or (public.my_role() in ('admin','delivery') and (business = public.my_business() or public.my_business() = 'both'))
 );
 
 create or replace function public.set_today_meal(p_id uuid)
