@@ -56,7 +56,7 @@ let live = false;
 for (const m of menu) { if (m.available) { if (live) m.available = false; live = true; } }
 
 export const state = {
-  role: 'student', page: 'menu', menuTab: 'all', query: '', business: 'food', drinksLaunchAt: saved.drinksLaunchAt || (CLOUD ? null : Date.now() + 37 * 3600 * 1000), ordersTab: 'food',
+  role: 'student', page: 'menu', menuTab: 'all', query: '', business: 'food', drinksConfig: saved.drinksConfig || { enabled: !CLOUD, nextOpenAt: CLOUD ? null : Date.now() + 37 * 3600 * 1000 }, drinksLaunchAt: saved.drinksLaunchAt || (CLOUD ? null : Date.now() + 37 * 3600 * 1000), ordersTab: 'food',
   menu, drinksMenu, orders: saved.orders || [], cart: saved.cart || {},
   profile: saved.profile || { name: '', phone: '', block: 'A', floor: '1', room: '' },
   challenges: saved.challenges || {},

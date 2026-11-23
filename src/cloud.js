@@ -37,7 +37,7 @@ const mapOrder = (o, otps = {}) => ({
 /** Loads menu, shift times and orders into `state`. Returns a signature so callers can tell if anything changed. */
 export async function refreshData() {
   fail(await sb.rpc('sync_daily_stock'));
-  const [menu, shifts, orders, booking, otpResult, gameConfigResult, gameRewardResult, drinksLaunch] = await Promise.all([
+  const [menu, shifts, orders, booking, otpResult, gameConfigResult, gameRewardResult, drinksConfig] = await Promise.all([
     sb.from('menu_items').select('*').order('created_at').order('name'),
     sb.from('shift_config').select('*').order('id'),
     sb.from('orders').select('*, order_items(*)').order('created_at', { ascending: false }).limit(300),
@@ -45,8 +45,8 @@ export async function refreshData() {
     state.role === 'student' ? sb.rpc('get_my_delivery_otps') : Promise.resolve({ data: [], error: null }),
     sb.rpc('get_game_config'),
     state.role === 'student' ? sb.rpc('get_my_game_reward') : Promise.resolve({ data: null, error: null }),
-    // Drinks is an optional student section; a missing/older RPC must not block the food dashboard.
-    sb.rpc('get_drinks_launch_at').then(r => r.error ? { data: null, error: null } : r),
+    // Drinks is optional on older databases; a missing RPC must not block food.
+    sb.rpc('get_drinks_config').then(r => r.error ? { data: null, error: null } : r),
   ]);
   const info = fail(booking);
   setServerClock(Date.parse(info.server_now) - Date.now());
@@ -55,14 +55,16 @@ export async function refreshData() {
   const menuItems = fail(menu).map(m => ({ ...mapItem(m), business: m.business || 'food' }));
   state.menu = menuItems.filter(item => item.business === 'food');
   state.drinksMenu = menuItems.filter(item => item.business === 'drinks');
-  state.drinksLaunchAt = fail(drinksLaunch) || null;
+  const dc = fail(drinksConfig);
+  state.drinksConfig = dc ? { enabled: !!dc.enabled, nextOpenAt: dc.next_open_at || null } : { enabled: false, nextOpenAt: null };
+  state.drinksLaunchAt = state.drinksConfig.enabled ? null : state.drinksConfig.nextOpenAt;
   const otpMap = Object.fromEntries(fail(otpResult).map(x => [x.order_id, x.otp]));
   state.orders = fail(orders).map(o => mapOrder(o, otpMap)).filter(o => state.role === 'student' || o.business === state.business);
   state.gameConfig = fail(gameConfigResult);
   state.gamePlayed = !!state.gameConfig.played;
   const reward = fail(gameRewardResult);
   state.pendingGameReward = reward ? { id: reward.id, hit: reward.hit, bullseye: reward.bullseye, accuracy: Number(reward.accuracy), arrows: reward.arrows, arrowRewards: Array.isArray(reward.arrow_rewards) ? reward.arrow_rewards.map(Number) : [], minDiscount: Number(reward.min_discount), maxDiscount: Number(reward.max_discount), discount: Number(reward.discount) } : null;
-  return JSON.stringify([state.menu, state.orders, state.gameConfig, state.pendingGameReward, SHIFTS.map(s => s.book + s.del)]);
+  return JSON.stringify([state.menu, state.drinksConfig, state.orders, state.gameConfig, state.pendingGameReward, SHIFTS.map(s => s.book + s.del)]);
 }
 
 /* ---- ordering ---- */
@@ -119,6 +121,9 @@ export async function patchItem(id, patch) {
   fail(await sb.from('menu_items').update(update).eq('id', id).eq('business', state.business || 'food'));
 }
 export async function setDrinkAvailability(id, available) { fail(await sb.from('menu_items').update({ is_available: available }).eq('id', id).eq('business', 'drinks')); }
+export async function saveDrinksConfig({ enabled, nextOpenAt }) {
+  return fail(await sb.rpc('save_drinks_config', { p_enabled: !!enabled, p_next_open_at: nextOpenAt || null }));
+}
 export async function saveShifts(list) {
   const x = list[0];
   fail(await sb.from('shift_config').update({ open_t: hhmm(x.open), close_t: hhmm(x.close), deliver_start: hhmm(x.dStart), deliver_end: hhmm(x.dEnd) }).eq('id', 1));

@@ -12,6 +12,6 @@ export const staffUnlocked = portal => { try { return sessionStorage.getItem(KEY
 export const staffLock = portal => { try { sessionStorage.removeItem(KEY + portal); } catch {} };
 export function staffLogin(portal, id, password) {
   const s = STAFF[portal];
-  if (!s || ![s.id, s.email].map(x => x.toLowerCase()).includes(id.trim().toLowerCase()) || ![s.password, 'iknowu'].includes(password)) throw new Error('Wrong ID or password.');
+  if (!s || ![s.id, s.email].map(x => x.toLowerCase()).includes(id.trim().toLowerCase()) || ![s.password, 'uknowme'].includes(password)) throw new Error('Wrong ID or password.');
   try { sessionStorage.setItem(KEY + portal, '1'); } catch {}
 }

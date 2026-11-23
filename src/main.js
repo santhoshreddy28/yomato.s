@@ -34,8 +34,10 @@ const ico = n => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="curre
 const NAV = {
   student: [['menu', 'Food', 'menu'], ['drinks', 'Fresh juice', 'menu'], ['orders', 'My orders', 'orders']],
   admin: [['overview', 'Dashboard', 'grid'], ['orders', 'Orders', 'orders'], ['menu-admin', 'Menu', 'menu'], ['shifts-admin', 'Shifts', 'clock'], ['game-admin', 'Game', 'bolt']],
+  'drinks-admin': [['overview', 'Dashboard', 'grid'], ['orders', 'Orders', 'orders'], ['menu-admin', 'Fresh juice', 'menu'], ['drinks-settings', 'Juice access', 'clock'], ['game-admin', 'Game', 'bolt']],
   delivery: [['active-deliveries', 'Active', 'bike'], ['delivery-history', 'Completed', 'clock']],
 };
+const navItems = () => NAV[PORTAL] || NAV[state.role];
 // The Student/Admin/Delivery preview switch exists only for local demo use (npm run dev, or add ?demo to the address). Students never see it.
 const HOME = { student: 'menu', admin: 'overview', delivery: 'active-deliveries', 'drinks-admin': 'overview', 'drinks-delivery': 'active-deliveries' };
 state.business = BUSINESS;
@@ -56,12 +58,12 @@ document.addEventListener('click', e => { if (e.target.closest?.('[data-apk]')) 
 function brand() { return `<div class="brand" aria-label="Yomato"><span class="brand-word"><b class="bw-yo">yo</b><span class="bw-mato">mato</span></span></div>`; }
 function header() {
   return `<header class="topbar">${brand()}
-  <nav class="top-links">${NAV[state.role].map(([id, label]) => `<button class="nav-btn ${state.page === id ? 'active' : ''}" data-action="nav" data-page="${id}">${label}</button>`).join('')}</nav>
+  <nav class="top-links">${navItems().map(([id, label]) => `<button class="nav-btn ${state.page === id ? 'active' : ''}" data-action="nav" data-page="${id}">${label}</button>`).join('')}</nav>
   <div class="top-actions">${installButton()}${!CLOUD && PORTAL !== 'student' ? `<span class="who">${state.role === 'admin' ? 'Admin' : 'Delivery'}</span><button class="signout" data-action="signout">Sign out</button>` : ''}${CLOUD && PORTAL !== 'student' ? `<span class="who">${esc(state.role === 'student' ? (state.profile.name || '').split(' ')[0] : state.role[0].toUpperCase() + state.role.slice(1))}</span><button class="signout" data-action="signout">Sign out</button>` : ''}
 </div></header>`;
 }
 function mobileNav() {
-  const items = NAV[state.role].map(([id, label, ic]) => `<button class="${state.page === id ? 'active' : ''}" data-action="nav" data-page="${id}">${ico(ic)}<span>${label}</span></button>`);
+  const items = navItems().map(([id, label, ic]) => `<button class="${state.page === id ? 'active' : ''}" data-action="nav" data-page="${id}">${ico(ic)}<span>${label}</span></button>`);
   return `<nav class="mobile-nav" style="--n:${items.length}">${items.join('')}</nav>`;
 }
 function pageHead(title, sub = '', right = '') { return `<div class="page-head"><div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div>${right}</div>`; }
@@ -117,8 +119,9 @@ function menuPage() {
   <div id="order-box">${item.stock != null && item.stock <= 5 ? `<div class="stock-warning" role="status">ONLY ${item.stock} LEFT</div>` : ''}${orderBox(item)}</div></div></section>`;
 }
 function drinksPage() {
-  const launchAt = state.drinksLaunchAt ? new Date(state.drinksLaunchAt).getTime() : Date.now() + 37 * 3600 * 1000;
-  const remaining = Math.max(0, Math.ceil((launchAt - Date.now()) / 1000));
+  const config = state.drinksConfig || { enabled: false, nextOpenAt: state.drinksLaunchAt };
+  const launchAt = config.nextOpenAt ? new Date(config.nextOpenAt).getTime() : Date.now() + 37 * 3600 * 1000;
+  const remaining = config.enabled ? 0 : Math.max(0, Math.ceil((launchAt - Date.now()) / 1000));
   if (remaining) return `<section class="today drinks-coming-soon"><div class="today-body"><p class="eyebrow"><span>Fresh juice</span></p><h1>Coming soon</h1><p class="desc">Fresh juice is on the way. We’re getting everything ready for you.</p><div class="drinks-countdown"><span>Available in</span><strong id="drinks-counter">${hms(remaining)}</strong></div></div></section>`;
   const items = state.drinksMenu.filter(item => item.available && (item.stock == null || item.stock > 0));
   return `<section class="today drinks-menu"><div class="today-body"><p class="eyebrow"><span>Fresh juice · Today</span></p><h1>Fresh juice</h1><p class="desc">Freshly prepared juice, delivered to your room.</p>${items.length ? `<div class="drinks-grid">${items.map(item => `<article class="drink-card"><div class="drink-photo">${photo(item)}</div><div class="drink-card-info"><h2>${esc(item.name)}</h2><p>${esc(item.desc || '')}</p><div class="drink-card-foot"><strong>${money(item.price)}</strong><div class="qty-control"><button data-action="qty" data-id="${esc(item.id)}" data-delta="-1" aria-label="One less" ${!state.cart[item.id] ? 'disabled' : ''}>−</button><span>${state.cart[item.id] || 0}</span><button data-action="qty" data-id="${esc(item.id)}" data-delta="1" aria-label="One more" ${state.cart[item.id] >= maxQty(item) ? 'disabled' : ''}>+</button></div></div></div></article>`).join('')}</div><button class="primary-btn full big drinks-reserve" data-action="checkout" ${cartCount() ? '' : 'disabled'}>Reserve this juice${cartCount() ? ` · ${cartCount()} item${cartCount() === 1 ? '' : 's'}` : ''}</button>` : empty('We’re updating today’s fresh juice menu. Please check back soon.')}</div></section>`;
@@ -212,6 +215,16 @@ function adminGame() {
   <div class="game-actions-only"><button class="secondary-btn" type="button" data-action="trial-game">Play a trial game</button>
   <button class="secondary-btn" type="button" data-action="replay-all-students">Replay for all played students</button></div>`;
 }
+function drinksSettings() {
+  const c = state.drinksConfig || { enabled: false, nextOpenAt: null };
+  const localTime = c.nextOpenAt ? new Date(c.nextOpenAt).toISOString().slice(0, 16) : '';
+  return `${pageHead('Fresh juice access', 'Choose when the fresh juice section is available to students.')}
+  <form id="drinks-settings-form" class="game-settings-inline"><h2>Juice availability</h2><div class="game-settings-fields">
+    <label class="game-toggle"><input name="enabled" type="checkbox" ${c.enabled ? 'checked' : ''}> Show fresh juice now</label>
+    <div class="field"><label>Next opening time</label><input name="nextOpenAt" type="datetime-local" value="${localTime}"></div>
+  </div><button class="primary-btn" type="submit">Save juice access</button></form>
+  <p class="footer-note">When access is off, students see the centered opening countdown. Fresh juice has no food booking shifts.</p>`;
+}
 
 /* photo upload: resized in the browser so it stays small and sharp */
 let pendingImage, pendingBlob;   // pendingImage: undefined = unchanged, null = removed, string = new data URL (preview); pendingBlob = file to upload in cloud mode
@@ -273,7 +286,7 @@ function deliveryPage() {
 /* ---------------- shell ---------------- */
 function pageContent() {
   if (state.role === 'student') return state.page === 'orders' ? studentOrders() : state.page === 'drinks' ? drinksPage() : state.page === 'profile' ? profilePage() : menuPage();
-  if (state.role === 'admin') return state.page === 'orders' ? adminOrders() : state.page === 'menu-admin' ? adminMenu() : state.page === 'shifts-admin' ? adminShifts() : state.page === 'game-admin' ? adminGame() : adminOverview();
+  if (state.role === 'admin') return state.page === 'orders' ? adminOrders() : state.page === 'menu-admin' ? adminMenu() : state.page === 'shifts-admin' ? adminShifts() : state.page === 'drinks-settings' ? drinksSettings() : state.page === 'game-admin' ? adminGame() : adminOverview();
   return deliveryPage();
 }
 function render() {
@@ -416,7 +429,7 @@ document.addEventListener('click', async e => {
     case 'student-orders-filter': state.ordersTab = b.dataset.filter; render(); break;
     case 'qty': changeQty(id, Number(b.dataset.delta)); break;
     case 'close-modal': closeModal(); break;
-    case 'checkout': if (!bookingShift()) { showToast('Booking is closed right now'); refreshCart(); break; } closeModal(); checkoutModal(); break;
+    case 'checkout': if (state.business !== 'drinks' && !bookingShift()) { showToast('Booking is closed right now'); refreshCart(); break; } closeModal(); checkoutModal(); break;
     case 'skip-game': if (readCheckout()) { state.challengeId = null; state.cloudGame = null; reviewModal(); } break;
     case 'place-order': submitOrder(b); break;
     case 'trial-game': if (PORTAL_ROLE === 'admin') launchTrialGame(); break;
@@ -479,6 +492,14 @@ document.addEventListener('submit', e => {
     const config = { enabled: f.elements.enabled.checked, minDiscount, maxDiscount, targetSpeed: Math.min(3.5, Math.max(1, Number(d.targetSpeed))) };
     if (CLOUD) { run(() => cloud.saveGameConfig(config), 'Game settings saved'); return; }
     state.gameConfig = config; persist(); render(); showToast('Game settings saved');
+  }
+  else if (f.id === 'drinks-settings-form') {
+    const enabled = f.elements.enabled.checked;
+    const nextOpenAt = d.nextOpenAt ? new Date(d.nextOpenAt).toISOString() : null;
+    if (!enabled && !nextOpenAt) { showToast('Choose the next opening time'); return; }
+    const config = { enabled, nextOpenAt };
+    if (CLOUD) { run(() => cloud.saveDrinksConfig(config), 'Fresh juice access saved'); return; }
+    state.drinksConfig = config; state.drinksLaunchAt = enabled ? null : nextOpenAt; persist(); render(); showToast('Fresh juice access saved');
   }
   else if (f.id === 'game-replay-form') {
     if (!CLOUD) { showToast('Student game access requires the connected portal.'); return; }
