@@ -26,9 +26,9 @@ export function mountGame(frame, onEnd, { targetSpeed = 2.4 } = {}) {
   drawPips();
 
   // Target: sweeps across the top with a changing rhythm.
-  const enemy = () => ({
-    x: W / 2 + Math.sin(t * 0.00055 * targetSpeed) * 100 + Math.sin(t * 0.0013 * targetSpeed + 1) * 22,
-    y: 130 + Math.sin(t * 0.00045 * targetSpeed) * 8,
+  const enemy = (at = t) => ({
+    x: W / 2 + Math.sin(at * 0.00055 * targetSpeed) * 100 + Math.sin(at * 0.0013 * targetSpeed + 1) * 22,
+    y: 130 + Math.sin(at * 0.00045 * targetSpeed) * 8,
   });
 
   function line(x1, y1, x2, y2, c, w = 3) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.strokeStyle = c; ctx.lineWidth = w; ctx.stroke(); }
@@ -79,7 +79,7 @@ export function mountGame(frame, onEnd, { targetSpeed = 2.4 } = {}) {
     const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#0c241d'); bg.addColorStop(1, '#08170f'); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
     line(0, 604, W, 604, 'rgba(231,190,90,.25)', 1);
 
-    const e = enemy();
+    const e = enemy(t);
     bow(player.x, player.y, aim ? aim.a : -Math.PI / 2);
     target(e.x, e.y, flash > 0);
     if (flash > 0) flash -= dt;
@@ -88,13 +88,14 @@ export function mountGame(frame, onEnd, { targetSpeed = 2.4 } = {}) {
       const k = dt / 16.67;
       for (let s = 0; s < 4 && arrow; s++) {   // small sub-steps so a fast arrow can never skip through the target
         arrow.x += arrow.vx * k / 4; arrow.y += arrow.vy * k / 4;   // straight flight so the scope is exact
-        const error = Math.hypot(arrow.x - e.x, arrow.y - e.y);
+        const targetAt = enemy(t - dt + (s + 1) * dt / 4);
+        const error = Math.hypot(arrow.x - targetAt.x, arrow.y - targetAt.y);
         arrowBestDistance = Math.min(arrowBestDistance, error);
         if (error < TARGET_R) {
           hit = true; bullseye ||= error <= 3.8;
           if (!arrowHit) {
             arrowHit = true; flash = 160;
-            for (let i = 0; i < 18; i++) { const a = Math.random() * 6.28, sp = 0.05 + Math.random() * 0.12; particles.push({ x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 600 }); }
+            for (let i = 0; i < 18; i++) { const a = Math.random() * 6.28, sp = 0.05 + Math.random() * 0.12; particles.push({ x: targetAt.x, y: targetAt.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 600 }); }
           }
         }
       }
