@@ -554,7 +554,7 @@ if (CLOUD) {
     if (PORTAL === 'student') { if (!s) await cloud.signInGuest(); return enterApp(); }   // students: no login screen
     if (s?.user?.is_anonymous) { await sb.auth.signOut({ scope: 'local' }); s = null; }  // a student's guest session must not block the staff sign-in
     return s ? enterApp() : authScreen();
-  })().catch(e => { if (PORTAL === 'student') studentStartupError('Please refresh once. If this continues, Anonymous sign-ins needs to be enabled in Supabase.'); else { authMsg = 'Could not reach the server. Check your connection and refresh.'; authScreen(); } });
+  })().catch(e => { if (PORTAL === 'student') { console.error('Student startup failed', e); studentStartupError(`Could not start the dashboard: ${e?.message || 'connection error'}`); } else { authMsg = 'Could not reach the server. Check your connection and refresh.'; authScreen(); } });
 } else if (PORTAL !== 'student' && !staffUnlocked(PORTAL_ROLE)) authScreen();
 else render();
 if (import.meta.env.PROD && 'serviceWorker' in navigator && location.protocol.startsWith('http')) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
