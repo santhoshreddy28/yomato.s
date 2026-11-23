@@ -111,7 +111,7 @@ setInterval(() => {
 function menuPage() {
   const item = todayItem();
   if (!item) return `<section class="today closed"><div class="today-body"><p class="eyebrow"><span>Today</span></p><h1>We’re updating today’s menu.</h1><p class="desc">Please check back soon while we prepare the menu.</p><p class="audience-note">Available only for BS-13 residents.</p></div></section>`;
-  if (item.stock === 0) return `<section class="today closed sold-out"><div class="today-body"><p class="eyebrow"><span>Today · Fully booked</span></p><h1>All available plates have been booked.</h1><p class="desc">Thank you for your interest. The next booking window opens in:</p>${counterHTML(true)}</div></section>`;
+  if (item.stock === 0) return `<section class="today closed sold-out"><div class="today-body"><p class="eyebrow"><span>Today · Fully booked</span></p><h1>All available plates have been booked.</h1><p class="desc">Thank you for your interest. The next booking window opens in:</p><p class="audience-note">Available only for BS-13 residents.</p>${counterHTML(true)}</div></section>`;
   state.cart = { [item.id]: Math.min(state.cart[item.id] || 1, maxQty(item)) || 1 };
   const day = new Date().toLocaleDateString(undefined, { weekday: 'long' });
   return `<section class="today"><div class="today-art"><div class="arch"><div class="arch-in">${photo(item)}</div></div></div>
