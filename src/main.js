@@ -81,8 +81,10 @@ function orderBox(item) {
   const qty = state.cart[item.id] || 1, can = !!bookingShift();
   const shift = shiftState(), completed = !shift.open && shift.key === 'n1t' && !DEMO;
   const closedMessage = completed ? `<p class="booking-complete" role="status">Today’s booking is completed. Please check back during the next shift.</p>` : '';
+  const gamePromo = state.gameConfig.enabled && !state.gamePlayed
+    ? `<p class="game-promo-note">Play the game for a chance to get up to ${money(state.gameConfig.maxDiscount)} off!</p>` : '';
   return `${counterHTML()}<div class="today-row"><div class="price-wrap"><span class="price">${money(item.price * qty)}</span><small>${qty > 1 ? qty + ' plates' : 'One plate'}</small></div><div class="qty-control"><button data-action="qty" data-id="${item.id}" data-delta="-1" aria-label="One less" ${qty <= 1 ? 'disabled' : ''}>−</button><span>${qty}</span><button data-action="qty" data-id="${item.id}" data-delta="1" aria-label="One more" ${qty >= maxQty(item) ? 'disabled' : ''}>+</button></div></div>
-  ${closedMessage}<button class="primary-btn full big" data-action="checkout" ${can ? '' : 'disabled'}>${can ? 'Reserve this meal' : completed ? 'Booking completed' : 'Reservations closed'}</button>`;
+  ${closedMessage}<button class="primary-btn full big" data-action="checkout" ${can ? '' : 'disabled'}>${can ? 'Reserve this meal' : completed ? 'Booking completed' : 'Reservations closed'}</button>${gamePromo}`;
 }
 // Live counter: ticks every second; the section re-renders only when a booking window opens or closes.
 let lastShiftKey = shiftState().key;
