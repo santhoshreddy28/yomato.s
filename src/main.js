@@ -32,7 +32,7 @@ const ico = n => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="curre
 
 /* ---------------- navigation ---------------- */
 const NAV = {
-  student: [['menu', 'Food', 'menu'], ['drinks', 'Fresh Juice & Drinks', 'menu'], ['orders', 'My orders', 'orders']],
+  student: [['menu', 'Food', 'menu'], ['drinks', 'Fresh juice', 'menu'], ['orders', 'My orders', 'orders']],
   admin: [['overview', 'Dashboard', 'grid'], ['orders', 'Orders', 'orders'], ['menu-admin', 'Menu', 'menu'], ['shifts-admin', 'Shifts', 'clock'], ['game-admin', 'Game', 'bolt']],
   delivery: [['active-deliveries', 'Active', 'bike'], ['delivery-history', 'Completed', 'clock']],
 };
@@ -119,9 +119,9 @@ function menuPage() {
 function drinksPage() {
   const launchAt = state.drinksLaunchAt ? new Date(state.drinksLaunchAt).getTime() : Date.now() + 37 * 3600 * 1000;
   const remaining = Math.max(0, Math.ceil((launchAt - Date.now()) / 1000));
-  if (remaining) return `<section class="today drinks-coming-soon"><div class="today-body"><p class="eyebrow"><span>Fresh juice & drinks</span></p><h1>Coming soon</h1><p class="desc">Fresh drinks are on the way. We’re getting everything ready for you.</p><div class="drinks-countdown"><span>Available in</span><strong id="drinks-counter">${hms(remaining)}</strong></div></div></section>`;
+  if (remaining) return `<section class="today drinks-coming-soon"><div class="today-body"><p class="eyebrow"><span>Fresh juice</span></p><h1>Coming soon</h1><p class="desc">Fresh juice is on the way. We’re getting everything ready for you.</p><div class="drinks-countdown"><span>Available in</span><strong id="drinks-counter">${hms(remaining)}</strong></div></div></section>`;
   const items = state.drinksMenu.filter(item => item.available && (item.stock == null || item.stock > 0));
-  return `<section class="today drinks-menu"><div class="today-body"><p class="eyebrow"><span>Fresh juice & drinks</span></p><h1>Drinks menu</h1><p class="desc">Freshly prepared drinks, delivered to your room.</p>${items.length ? `<div class="drinks-grid">${items.map(item => `<article class="drink-card"><div class="drink-photo">${photo(item)}</div><div class="drink-card-info"><h2>${esc(item.name)}</h2><p>${esc(item.desc || '')}</p><div class="drink-card-foot"><strong>${money(item.price)}</strong><div class="qty-control"><button data-action="qty" data-id="${esc(item.id)}" data-delta="-1" aria-label="One less" ${!state.cart[item.id] ? 'disabled' : ''}>−</button><span>${state.cart[item.id] || 0}</span><button data-action="qty" data-id="${esc(item.id)}" data-delta="1" aria-label="One more" ${state.cart[item.id] >= maxQty(item) ? 'disabled' : ''}>+</button></div></div></div></article>`).join('')}</div><button class="primary-btn full big drinks-reserve" data-action="checkout" ${cartCount() ? '' : 'disabled'}>Reserve drinks${cartCount() ? ` · ${cartCount()} item${cartCount() === 1 ? '' : 's'}` : ''}</button>` : empty('We’re updating the drinks menu. Please check back soon.')}</div></section>`;
+  return `<section class="today drinks-menu"><div class="today-body"><p class="eyebrow"><span>Fresh juice · Today</span></p><h1>Fresh juice</h1><p class="desc">Freshly prepared juice, delivered to your room.</p>${items.length ? `<div class="drinks-grid">${items.map(item => `<article class="drink-card"><div class="drink-photo">${photo(item)}</div><div class="drink-card-info"><h2>${esc(item.name)}</h2><p>${esc(item.desc || '')}</p><div class="drink-card-foot"><strong>${money(item.price)}</strong><div class="qty-control"><button data-action="qty" data-id="${esc(item.id)}" data-delta="-1" aria-label="One less" ${!state.cart[item.id] ? 'disabled' : ''}>−</button><span>${state.cart[item.id] || 0}</span><button data-action="qty" data-id="${esc(item.id)}" data-delta="1" aria-label="One more" ${state.cart[item.id] >= maxQty(item) ? 'disabled' : ''}>+</button></div></div></div></article>`).join('')}</div><button class="primary-btn full big drinks-reserve" data-action="checkout" ${cartCount() ? '' : 'disabled'}>Reserve this juice${cartCount() ? ` · ${cartCount()} item${cartCount() === 1 ? '' : 's'}` : ''}</button>` : empty('We’re updating today’s fresh juice menu. Please check back soon.')}</div></section>`;
 }
 function orderCard(o, allowCancel = false) {
   return `<div class="order-card"><div class="order-head"><span class="order-id">Ref. ${esc(o.id)}</span><span class="status ${statusClass(o.status)}">${esc(o.status)}</span></div>
@@ -139,8 +139,7 @@ function tracker(o) {
 }
 function studentOrders() {
   const mine = CLOUD ? state.orders : state.orders.filter(o => !state.profile.phone || o.customer.phone === state.profile.phone);
-  const selected = mine.filter(o => (o.business || 'food') === state.ordersTab);
-  return `<div class="wrap">${pageHead('My orders', 'Your meals and drinks, from our kitchen to your door.')}<div class="tabs">${[['food','Food'],['drinks','Drinks']].map(([v,l])=>`<button class="tab ${state.ordersTab===v?'active':''}" data-action="student-orders-filter" data-filter="${v}">${l}</button>`).join('')}</div>${selected.length ? selected.map(o => orderCard(o, true).replace(/<\/div>$/, tracker(o) + '</div>')).join('') : empty(`Your ${state.ordersTab} reservations will appear here.`)}</div>`;
+  return `<div class="wrap">${pageHead('My orders', 'Your meals and fresh juice, from our kitchen to your door.')}${mine.length ? mine.map(o => orderCard(o, true).replace(/<\/div>$/, tracker(o) + '</div>')).join('') : empty('Your reservations will appear here.')}</div>`;
 }
 function fields(p) {
   return `<div class="field full-width"><label>Full name</label><input name="name" value="${esc(p.name)}" placeholder="Your name" autocomplete="name" required></div>
