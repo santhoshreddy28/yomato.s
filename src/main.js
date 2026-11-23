@@ -12,6 +12,7 @@ const app = document.querySelector('#app');
 /** Which endpoint this page was opened on: '/' = student, '/admin/' = admin, '/delivery/' = delivery. */
 const PORTAL = ['admin', 'delivery'].includes(window.ANNAM_PORTAL) ? window.ANNAM_PORTAL : 'student';
 const ROOT = PORTAL === 'student' ? './' : '../';
+const APP_VERSION = '1.1.0';
 // Staff endpoints:  /1121/ (delivery)   /A1121/ (admin)
 const PORTAL_URL = { student: ROOT, admin: ROOT + 'A1121/', delivery: ROOT + '1121/' };
 const IMG_BASE = ROOT + 'images/foods/';
@@ -47,7 +48,7 @@ if (!installed) fetch(APK_URL, { method: 'HEAD', cache: 'no-store' }).then(r => 
   apkInfo = { size: Number(r.headers.get('content-length')) || 0 };
   if (document.querySelector('.topbar')) render();
 }).catch(() => {});
-document.addEventListener('click', e => { if (e.target.closest?.('[data-apk]')) showToast('Downloading Yomato… open the file when it finishes. If Android asks, allow “Install unknown apps”.'); });
+document.addEventListener('click', e => { if (e.target.closest?.('[data-apk]')) showToast(`Yomato APK v${APP_VERSION} · Downloading now. Open the file when it finishes.`, 5000); });
 
 function brand() { return `<div class="brand" aria-label="Yomato"><span class="brand-word"><b class="bw-yo">yo</b><span class="bw-mato">mato</span></span></div>`; }
 function header() {
@@ -262,10 +263,12 @@ function refreshCart() {
   const item = todayItem(), box = document.getElementById('order-box');
   if (item && box) box.innerHTML = orderBox(item);
 }
-function showToast(msg) {
+let toastTimer = 0;
+function showToast(msg, duration = 2400) {
+  clearTimeout(toastTimer);
   document.querySelector('.toast')?.remove();
   const el = Object.assign(document.createElement('div'), { className: 'toast', textContent: msg, role: 'status' });
-  document.body.append(el); setTimeout(() => el.remove(), 2400);
+  document.body.append(el); toastTimer = setTimeout(() => el.remove(), duration);
 }
 function openModal(content, kind = '') {
   document.querySelector('.modal-backdrop')?.remove();
