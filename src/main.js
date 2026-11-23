@@ -449,7 +449,7 @@ document.addEventListener('click', async e => {
     case 'pickup': if (CLOUD) await run(() => cloud.setStatus(id, 'Out for delivery')); else { updateOrder(id, { status: 'Out for delivery' }); render(); } break;
     case 'deliver': if (CLOUD) await run(() => cloud.setStatus(id, 'Delivered'), 'Marked delivered'); else { updateOrder(id, { status: 'Delivered' }); render(); showToast('Marked delivered'); } break;
     case 'cancel-order': if (confirm('Cancel this order?')) { if (CLOUD) await run(() => cloud.cancelMyOrder(id), 'Order cancelled'); else { updateOrder(id, { status: 'Cancelled' }); render(); showToast('Order cancelled'); } } break;
-    case 'signout': if (CLOUD) await cloud.signOut(); else { staffLock(PORTAL_ROLE); authMsg = ''; authScreen(); } break;
+    case 'signout': if (CLOUD) await cloud.signOut(); else { staffLock(PORTAL); authMsg = ''; authScreen(); } break;
     case 'retry-student': location.reload(); break;
     case 'auth-mode': authMode = authMode === 'signin' ? 'signup' : 'signin'; authMsg = ''; authScreen(); break;
   }
@@ -539,7 +539,7 @@ async function doAuth(d, btn) {
     if (authMode === 'signup' && PORTAL === 'student') {
       const signedIn = await cloud.signUp({ email: d.email.trim(), password: d.password, name: d.name.trim(), phone: d.phone, block: d.block, room: d.room });
       if (!signedIn) { authMode = 'signin'; authMsg = 'Account created. Check your email to confirm it, then sign in.'; authScreen(); return; }
-    } else if (!CLOUD) { staffLogin(PORTAL_ROLE, d.email, d.password); render(); return; }
+    } else if (!CLOUD) { staffLogin(PORTAL, d.email, d.password); render(); return; }
     else await cloud.signIn(d.email.trim(), d.password);
     await enterApp();
   } catch (e) { authMsg = e.message; authScreen(); }
@@ -575,6 +575,6 @@ if (CLOUD) {
     if (s?.user?.is_anonymous) { await sb.auth.signOut({ scope: 'local' }); s = null; }  // a student's guest session must not block the staff sign-in
     return s ? enterApp() : authScreen();
   })().catch(e => { if (PORTAL === 'student') { console.error('Student startup failed', e); studentStartupError(`Could not start the dashboard: ${e?.message || 'connection error'}`); } else { authMsg = 'Could not reach the server. Check your connection and refresh.'; authScreen(); } });
-} else if (PORTAL !== 'student' && !staffUnlocked(PORTAL_ROLE)) authScreen();
+} else if (PORTAL !== 'student' && !staffUnlocked(PORTAL)) authScreen();
 else render();
 if (import.meta.env.PROD && 'serviceWorker' in navigator && location.protocol.startsWith('http')) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
