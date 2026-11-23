@@ -263,7 +263,9 @@ h1,h2,h3,.brand,.stat .value{font-family:var(--head)}
 .game-promo-note{margin:-8px 0 0;text-align:center;color:var(--accent);font-size:13px;font-weight:700;line-height:1.45}
 .audience-note{margin:-6px 0 0;text-align:center;color:var(--muted);font-size:12px;letter-spacing:.4px}
 .drinks-coming-soon,.drinks-menu{display:block;min-height:calc(100dvh - 64px);padding:clamp(28px,6vw,72px) 22px calc(120px + var(--safe-b))}
-.drinks-coming-soon .today-body,.drinks-menu .today-body{max-width:780px;margin:0 auto}
+.drinks-coming-soon .today-body,.drinks-menu .today-body{max-width:780px;margin:0 auto;align-items:center;text-align:center}
+.drinks-coming-soon .today-body h1,.drinks-menu .today-body h1{font-size:clamp(36px,4.2vw,56px);line-height:1.08}
+.drinks-coming-soon .desc,.drinks-menu .desc{max-width:620px;text-align:center}
 .drinks-coming-soon .today-body{min-height:min(62dvh,620px);display:flex;flex-direction:column;justify-content:center;gap:22px}
 .drinks-countdown{display:inline-flex;align-items:center;gap:18px;width:max-content;max-width:100%;padding:16px 22px;border:1px solid var(--line2);border-radius:18px;background:var(--surface)}
 .drinks-countdown span{font-size:12px;color:var(--muted);letter-spacing:1.4px;text-transform:uppercase}
