@@ -86,7 +86,7 @@ export async function placeOrder({ key, items, customer, challengeId }) {
 
 /* ---- orders (admin / delivery) ---- */
 const uuidOf = code => state.orders.find(o => o.id === code)?.uuid;
-export async function setStatus(code, status) { fail(await sb.rpc('set_order_status', { p_id: uuidOf(code), p_status: status })); }
+export async function setStatus(code, status) { fail(await sb.rpc('set_order_status_for_business', { p_id: uuidOf(code), p_status: status, p_business: state.business || 'food' })); }
 export async function cancelMyOrder(code) { fail(await sb.rpc('cancel_my_order', { p_id: uuidOf(code) })); }
 export async function verifyDeliveryOtp(code, otp) {
   const result = fail(await sb.rpc('verify_delivery_otp', { p_id: uuidOf(code), p_otp: otp }));
