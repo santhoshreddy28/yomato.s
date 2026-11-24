@@ -10,7 +10,9 @@ import { staffUnlocked, staffLock, staffLogin } from './staff.js';
 
 const app = document.querySelector('#app');
 /** Student, food staff, and drinks staff each use distinct portal paths. */
-const PORTAL = ['admin', 'delivery', 'drinks-admin', 'drinks-delivery'].includes(window.ANNAM_PORTAL) ? window.ANNAM_PORTAL : 'student';
+const PORTAL_OVERRIDE = import.meta.env.VITE_NATIVE_PORTAL || '';
+const PORTAL = ['admin', 'delivery', 'drinks-admin', 'drinks-delivery'].includes(window.ANNAM_PORTAL) ? window.ANNAM_PORTAL
+  : ['admin', 'delivery'].includes(PORTAL_OVERRIDE) ? PORTAL_OVERRIDE : 'student';
 const PORTAL_ROLE = PORTAL === 'drinks-admin' ? 'admin' : PORTAL === 'drinks-delivery' ? 'delivery' : PORTAL;
 const BUSINESS = PORTAL.startsWith('drinks-') ? 'drinks' : 'food';
 const ROOT = PORTAL === 'student' ? './' : '../';
