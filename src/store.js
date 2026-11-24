@@ -43,6 +43,13 @@ const localDrinkExamples = [
   ['demo-mango-juice', 'Mango Juice', 'Sweet mango blended to order', 35],
   ['demo-lime-soda', 'Fresh Lime Soda', 'Lime with sparkling soda, sweet or salted', 25],
   ['demo-mango-lassi', 'Mango Lassi', 'Yogurt blended with ripe mango', 40],
+  ['demo-jeera-water', 'Jeera Water', 'Chilled cumin-infused water with a fresh finish', 20],
+  ['demo-hot-chocolate', 'Hot Chocolate', 'Warm, rich chocolate drink', 50],
+  ['demo-black-salt-lemonade', 'Black Salt Lemonade', 'Refreshing lemon drink with black salt', 25],
+  ['demo-sugar-lemonade', 'Sugar Lemonade', 'Classic sweet fresh lemonade', 25],
+  ['demo-oreo-shake', 'Oreo Shake', 'Creamy chocolate cookie shake', 60],
+  ['demo-banana-shake', 'Banana Shake', 'Smooth banana milkshake', 50],
+  ['demo-cold-coffee', 'Cold Coffee', 'Chilled creamy coffee blend', 50],
 ].map(([id, name, desc, price]) => ({ id, name, desc, price, image: null, business: 'drinks', available: true, stock: 20 }));
 const drinksMenu = allMenu.filter(m => m.business === 'drinks');
 if (!CLOUD && !saved.drinksSeeded) drinksMenu.push(...localDrinkExamples);
