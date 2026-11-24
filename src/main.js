@@ -46,14 +46,14 @@ state.role = PORTAL_ROLE; state.page = HOME[PORTAL];   // each endpoint is locke
 /* ---- direct APK download (file lives at downloads/yomato.apk; button only appears once the file exists) ---- */
 const APK_URL = ROOT + 'downloads/yomato.apk';
 const installed = matchMedia('(display-mode: standalone)').matches || !!window.Capacitor?.isNativePlatform?.() || /iPhone|iPad|iPod/i.test(navigator.userAgent);
-let apkInfo = null;
-const installButton = () => apkInfo ? `<a class="install-btn" href="${APK_URL}" download="Yomato.apk" data-apk aria-label="Download the Yomato Android app"><span class="ib-ico">${ico('download')}</span><span class="ib-txt"><b>Get the app</b><small>Android${apkInfo.size ? ' · ' + Math.round(apkInfo.size / 1048576 * 10) / 10 + ' MB' : ''}</small></span></a>` : '';
+let apkInfo = { size: 0, available: false };
+const installButton = () => `<a class="install-btn${apkInfo.available ? '' : ' apk-pending'}" href="${APK_URL}" download="Yomato.apk" data-apk aria-label="Download the Yomato Android app"><span class="ib-ico">${ico('download')}</span><span class="ib-txt"><b>Get the app</b><small>Android${apkInfo.size ? ' · ' + Math.round(apkInfo.size / 1048576 * 10) / 10 + ' MB' : ''}</small></span></a>`;
 if (!installed) fetch(APK_URL, { method: 'HEAD', cache: 'no-store' }).then(r => {
   if (!r.ok || /text\/html/.test(r.headers.get('content-type') || '')) return;
-  apkInfo = { size: Number(r.headers.get('content-length')) || 0 };
+  apkInfo = { size: Number(r.headers.get('content-length')) || 0, available: true };
   if (document.querySelector('.topbar')) render();
 }).catch(() => {});
-document.addEventListener('click', e => { if (e.target.closest?.('[data-apk]')) showToast(`Yomato APK v${APP_VERSION} · Downloading now. Open the file when it finishes.`, 5000); });
+document.addEventListener('click', e => { if (e.target.closest?.('[data-apk]')) showToast(apkInfo.available ? `Yomato APK v${APP_VERSION} · Downloading now. Open the file when it finishes.` : 'Yomato APK is being prepared. Please check back soon.', 5000); });
 
 function brand() { return `<div class="brand" aria-label="Yomato"><span class="brand-word"><b class="bw-yo">yo</b><span class="bw-mato">mato</span></span></div>`; }
 function header() {

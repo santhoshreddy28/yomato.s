@@ -1,4 +1,4 @@
-const CACHE = 'yomato-v17';
+const CACHE = 'yomato-v18';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== CACHE).map(x => caches.delete(x)))).then(() => self.clients.claim())));
 // Network-first for pages/scripts (never serve stale code), cache-first for photos and fonts.
