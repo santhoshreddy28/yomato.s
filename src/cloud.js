@@ -25,7 +25,16 @@ export async function loadProfile() {
 }
 
 /* ---- reading ---- */
-const mapItem = m => ({ id: m.id, name: m.name, desc: m.description, price: Number(m.price), available: m.is_available, stock: m.stock, image: m.image });
+const DRINK_IMAGES = {
+  'jeera water': 'jeera-water.jpg',
+  'hot chocolate': 'hot-chocolate.jpg',
+  'black salt lemonade': 'black-salt-lemonade.jpg',
+  'sugar lemonade': 'sugar-lemonade.jpg',
+  'oreo shake': 'oreo-shake.jpg',
+  'banana shake': 'banana-shake.jpg',
+  'cold coffee': 'cold-coffee.jpg',
+};
+const mapItem = m => ({ id: m.id, name: m.name, desc: m.description, price: Number(m.price), available: m.is_available, stock: m.stock, image: m.image || (m.business === 'drinks' ? DRINK_IMAGES[String(m.name || '').trim().toLowerCase()] || null : null) });
 const mapOrder = (o, otps = {}) => {
   const business = o.business || 'food';
   return {

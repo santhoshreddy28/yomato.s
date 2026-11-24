@@ -246,7 +246,7 @@ function readPhoto(file) {
 }
 function foodModal(id) {
   const item = id ? activeMenu().find(x => x.id === id) : null; pendingImage = undefined; pendingBlob = undefined;
-  const preview = item?.image ? `<img src="${esc(imgSrc(item.image))}" alt="">` : `<span class="ph">${esc((item?.name || '+')[0])}</span>`;
+  const preview = item?.image ? `<img src="${esc(imgSrc(item.image, item.business))}" alt="">` : `<span class="ph">${esc((item?.name || '+')[0])}</span>`;
   openModal(`${modalHead(item ? 'Edit food item' : 'Add food item')}<form id="food-form" class="form-grid" data-id="${item ? item.id : ''}">
     <div class="field full-width"><label>Photo</label><div class="photo-edit"><div class="photo-preview" id="photo-preview">${preview}</div>
       <div class="photo-btns"><span class="muted small">Cropped to a portrait frame, so it always fills the picture.</span><label class="secondary-btn file-btn">${ico('image')} ${item?.image ? 'Change photo' : 'Upload photo'}<input type="file" accept="image/*" id="photo-input" hidden></label>${item?.image ? '<button type="button" class="link-btn" data-action="remove-photo">Remove photo</button>' : ''}</div></div></div>
