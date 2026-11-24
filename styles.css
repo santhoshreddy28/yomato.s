@@ -263,6 +263,7 @@ h1,h2,h3,.brand,.stat .value{font-family:var(--head)}
 .game-promo-note{margin:-8px 0 0;text-align:center;color:var(--accent);font-size:13px;font-weight:700;line-height:1.45}
 .audience-note{margin:-6px 0 0;text-align:center;color:var(--muted);font-size:12px;letter-spacing:.4px}
 .audience-note.full-width{grid-column:1/-1;margin:2px 0 0;padding:8px 0}
+.portal-update-note{margin:0;text-align:center;color:var(--muted);font-size:12px;line-height:1.5}
 .drinks-coming-soon,.drinks-menu{display:block;min-height:calc(100dvh - 64px);padding:clamp(28px,6vw,72px) 22px calc(120px + var(--safe-b))}
 .drinks-coming-soon .today-body,.drinks-menu .today-body{max-width:780px;margin:0 auto;align-items:center;text-align:center}
 .drinks-coming-soon .today-body h1,.drinks-menu .today-body h1{font-size:clamp(36px,4.2vw,56px);line-height:1.08}
