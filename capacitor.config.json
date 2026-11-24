@@ -1,0 +1,6 @@
+{
+  "appId": "in.yomato.app",
+  "appName": "Yomato",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}
