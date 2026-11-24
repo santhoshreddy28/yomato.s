@@ -50,6 +50,9 @@ const localDrinkExamples = [
   ['demo-oreo-shake', 'Oreo Shake', 'Creamy chocolate cookie shake', 60],
   ['demo-banana-shake', 'Banana Shake', 'Smooth banana milkshake', 50],
   ['demo-cold-coffee', 'Cold Coffee', 'Chilled creamy coffee blend', 50],
+  ['demo-salt-popcorn', 'Salt Popcorn', 'Lightly salted crunchy popcorn', 35],
+  ['demo-butter-popcorn', 'Butter Popcorn', 'Warm popcorn with buttery flavor', 35],
+  ['demo-chilli-popcorn', 'Chilli Popcorn', 'Crunchy popcorn with a spicy chilli seasoning', 35],
 ].map(([id, name, desc, price]) => ({ id, name, desc, price, image: null, business: 'drinks', available: true, stock: 20 }));
 const drinksMenu = allMenu.filter(m => m.business === 'drinks');
 if (!CLOUD && !saved.drinksSeeded) drinksMenu.push(...localDrinkExamples);
