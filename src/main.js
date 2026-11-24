@@ -47,9 +47,10 @@ state.role = PORTAL_ROLE; state.page = HOME[PORTAL];   // each endpoint is locke
 /* ---- direct APK download (file lives at downloads/yomato.apk; button only appears once the file exists) ---- */
 const APK_URL = ROOT + 'downloads/yomato.apk';
 const installed = matchMedia('(display-mode: standalone)').matches || !!window.Capacitor?.isNativePlatform?.() || /iPhone|iPad|iPod/i.test(navigator.userAgent);
+const mobileBrowser = !installed && (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 let apkInfo = { size: 0, available: false };
-const installButton = () => `<a class="install-btn${apkInfo.available ? '' : ' apk-pending'}" href="${APK_URL}" download="Yomato.apk" data-apk aria-label="Download the Yomato Android app"><span class="ib-ico">${ico('download')}</span><span class="ib-txt"><b>Get the app</b><small>Android${apkInfo.size ? ' · ' + Math.round(apkInfo.size / 1048576 * 10) / 10 + ' MB' : ''}</small></span></a>`;
-if (!installed) fetch(APK_URL, { method: 'HEAD', cache: 'no-store' }).then(r => {
+const installButton = () => mobileBrowser ? `<a class="install-btn${apkInfo.available ? '' : ' apk-pending'}" href="${APK_URL}" download="Yomato.apk" data-apk aria-label="Download the Yomato Android app"><span class="ib-ico">${ico('download')}</span><span class="ib-txt"><b>Get the app</b><small>Android${apkInfo.size ? ' · ' + Math.round(apkInfo.size / 1048576 * 10) / 10 + ' MB' : ''}</small></span></a>` : '';
+if (mobileBrowser) fetch(APK_URL, { method: 'HEAD', cache: 'no-store' }).then(r => {
   if (!r.ok || /text\/html/.test(r.headers.get('content-type') || '')) return;
   apkInfo = { size: Number(r.headers.get('content-length')) || 0, available: true };
   if (document.querySelector('.topbar')) render();
