@@ -47,7 +47,8 @@ state.business = BUSINESS;
 state.role = PORTAL_ROLE; state.page = HOME[PORTAL];   // each endpoint is locked to its own portal
 
 /* ---- direct APK download (file lives at downloads/yomato.apk; button only appears once the file exists) ---- */
-const APK_URL = ROOT + 'downloads/yomato.apk';
+const APK_FILE = PORTAL === 'admin' ? 'yomato-admin.apk' : PORTAL === 'delivery' ? 'yomato-delivery.apk' : 'yomato.apk';
+const APK_URL = ROOT + 'downloads/' + APK_FILE;
 const installed = matchMedia('(display-mode: standalone)').matches || !!window.Capacitor?.isNativePlatform?.() || /iPhone|iPad|iPod/i.test(navigator.userAgent);
 const mobileBrowser = !installed && (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 let apkInfo = { size: 0, available: false };
