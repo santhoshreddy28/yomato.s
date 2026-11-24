@@ -18,6 +18,7 @@ const APP_VERSION = '1.1.0';
 // Staff endpoints:  /1121/ (delivery)   /A1121/ (admin)
 const PORTAL_URL = { student: ROOT, admin: ROOT + 'A1121/', delivery: ROOT + '1121/', 'drinks-admin': ROOT + 'A1026/', 'drinks-delivery': ROOT + '1026/' };
 const IMG_BASE = ROOT + 'images/foods/';
+const DRINK_IMG_BASE = ROOT + 'images/drinks/';
 const money2 = n => '₹' + Number(n || 0).toFixed(2);
 const esc = (s = '') => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -72,10 +73,10 @@ const activeMenu = () => state.business === 'drinks' ? state.drinksMenu : state.
 const activeOrders = () => state.orders.filter(o => (o.business || 'food') === state.business);
 
 /* ---------------- student ---------------- */
-const imgSrc = im => (/^(data:|https?:|blob:)/.test(im) ? im : IMG_BASE + im);
+const imgSrc = (im, business = 'food') => (/^(data:|https?:|blob:)/.test(im) ? im : (business === 'drinks' ? DRINK_IMG_BASE : IMG_BASE) + im);
 function photo(item) {
   return item.image
-    ? `<img src="${esc(imgSrc(item.image))}" alt="${esc(item.name)}" decoding="async" fetchpriority="high">`
+    ? `<img src="${esc(imgSrc(item.image, item.business))}" alt="${esc(item.name)}" decoding="async" fetchpriority="high">`
     : `<span class="ph">${esc(item.name[0])}</span>`;
 }
 const todayItem = () => state.menu.find(item => item.available);
