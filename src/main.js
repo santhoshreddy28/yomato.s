@@ -256,8 +256,7 @@ function pageContent() {
 }
 function render() {
   const hero = '';
-  const updateBanner = state.role === 'student' ? '<div class="portal-update-banner" role="status"><span>The admin portal is currently being updated · Your order will still be delivered directly to your room</span></div>' : '';
-  app.innerHTML = `<div class="app-shell role-${state.role}${hero}">${updateBanner}${header()}<main class="page" id="page">${pageContent()}</main>${mobileNav()}</div>`;
+  app.innerHTML = `<div class="app-shell role-${state.role}${hero}">${header()}<main class="page" id="page">${pageContent()}</main>${mobileNav()}</div>`;
   window.scrollTo(0, 0);
 }
 function refreshCart() {
