@@ -27,7 +27,7 @@ export async function loadProfile() {
 /* ---- reading ---- */
 const mapItem = m => ({ id: m.id, name: m.name, desc: m.description, price: Number(m.price), available: m.is_available, stock: m.stock, image: m.image });
 const mapOrder = (o, otps = {}) => {
-  const business = o.business || 'food';
+  const business = 'food';
   return {
   id: o.code, uuid: o.id, key: o.idempotency_key, business, createdAt: Date.parse(o.created_at),
   deliveryOtp: otps[o.id],
@@ -56,7 +56,7 @@ export async function refreshData() {
   const menuItems = fail(menu).map(m => ({ ...mapItem(m), business: m.business || 'food' }));
   state.menu = menuItems.filter(item => item.business === 'food');
   const otpMap = Object.fromEntries(fail(otpResult).map(x => [x.order_id, x.otp]));
-  state.orders = fail(orders).map(o => mapOrder(o, otpMap)).filter(o => (o.business || 'food') === 'food');
+  state.orders = fail(orders).map(o => mapOrder(o, otpMap));
   state.gameConfig = fail(gameConfigResult);
   state.gamePlayed = !!state.gameConfig.played;
   const reward = fail(gameRewardResult);
