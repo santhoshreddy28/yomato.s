@@ -6,8 +6,6 @@
 export const STAFF = {
   admin: { id: 'A1121', password: 'Yomato@A1121', email: 'admin@yomato.in' },
   delivery: { id: '1121', password: 'Yomato@1121', email: 'delivery@yomato.in' },
-  'drinks-admin': { id: 'A1026', password: 'uknowme', email: 'adminn@yomato.in' },
-  'drinks-delivery': { id: '1026', password: 'uknowme', email: 'deliveryy@yomato.in' },
 };
 const KEY = 'yomato.staff.';
 export const staffUnlocked = portal => { try { return sessionStorage.getItem(KEY + portal) === '1'; } catch { return false; } };

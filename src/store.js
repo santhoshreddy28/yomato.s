@@ -36,26 +36,6 @@ const allMenu = CLOUD ? [] : (saved.menu || seedMenu).map(m => {
   return { stock: null, ...m, image: (seed && /^[a-z-]+(-cut\.webp|-3d\.webp|-photo\.webp|\.jpg|\.png)$/.test(m.image || '')) ? seed.image : (m.image || seed?.image || null) };
 });
 const menu = allMenu.filter(m => (m.business || 'food') === 'food');
-const localDrinkExamples = [
-  ['demo-lemon-juice', 'Fresh Lemon Juice', 'Fresh lemon, chilled water and a touch of sweetness', 25],
-  ['demo-orange-juice', 'Orange Juice', 'Freshly squeezed seasonal oranges', 35],
-  ['demo-watermelon-juice', 'Watermelon Juice', 'Chilled watermelon blended fresh', 30],
-  ['demo-mango-juice', 'Mango Juice', 'Sweet mango blended to order', 35],
-  ['demo-lime-soda', 'Fresh Lime Soda', 'Lime with sparkling soda, sweet or salted', 25],
-  ['demo-mango-lassi', 'Mango Lassi', 'Yogurt blended with ripe mango', 40],
-  ['demo-jeera-water', 'Jeera Water', 'Chilled cumin-infused water with a fresh finish', 20, 'jeera-water.jpg'],
-  ['demo-hot-chocolate', 'Hot Chocolate', 'Warm, rich chocolate drink', 50, 'hot-chocolate.jpg'],
-  ['demo-black-salt-lemonade', 'Black Salt Lemonade', 'Refreshing lemon drink with black salt', 25, 'black-salt-lemonade.jpg'],
-  ['demo-sugar-lemonade', 'Sugar Lemonade', 'Classic sweet fresh lemonade', 25, 'sugar-lemonade.jpg'],
-  ['demo-oreo-shake', 'Oreo Shake', 'Creamy chocolate cookie shake', 60, 'oreo-shake.jpg'],
-  ['demo-banana-shake', 'Banana Shake', 'Smooth banana milkshake', 50, 'banana-shake.jpg'],
-  ['demo-cold-coffee', 'Cold Coffee', 'Chilled creamy coffee blend', 50, 'cold-coffee.jpg'],
-  ['demo-salt-popcorn', 'Salt Popcorn', 'Lightly salted crunchy popcorn', 35],
-  ['demo-butter-popcorn', 'Butter Popcorn', 'Warm popcorn with buttery flavor', 35],
-  ['demo-chilli-popcorn', 'Chilli Popcorn', 'Crunchy popcorn with a spicy chilli seasoning', 35],
-].map(([id, name, desc, price, image]) => ({ id, name, desc, price, image: image || null, business: 'drinks', available: true, stock: 20 }));
-const drinksMenu = allMenu.filter(m => m.business === 'drinks');
-if (!CLOUD && !saved.drinksSeeded) drinksMenu.push(...localDrinkExamples);
 const localGameCycleKey = () => `${new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())}|${JSON.stringify(shiftConfig())}`;
 const initialGameCycleKey = localGameCycleKey();
 const savedGameMin = Math.max(0, Math.floor(Number(saved.gameConfig?.minDiscount ?? 4) || 0));
@@ -66,8 +46,8 @@ let live = false;
 for (const m of menu) { if (m.available) { if (live) m.available = false; live = true; } }
 
 export const state = {
-  role: 'student', page: 'menu', menuTab: 'all', query: '', business: 'food', drinksConfig: saved.drinksConfig || { enabled: !CLOUD, nextOpenAt: CLOUD ? null : Date.now() + 37 * 3600 * 1000 }, drinksLaunchAt: saved.drinksLaunchAt || (CLOUD ? null : Date.now() + 37 * 3600 * 1000), ordersTab: 'food',
-  menu, drinksMenu, orders: saved.orders || [], cart: saved.cart || {},
+  role: 'student', page: 'menu', menuTab: 'all', query: '', business: 'food', ordersTab: 'food',
+  menu, orders: saved.orders || [], cart: saved.cart || {},
   profile: saved.profile || { name: '', phone: '', block: 'A', floor: '1', room: '' },
   challenges: saved.challenges || {},
   gamePlayed: saved.gameCycleKey ? saved.gameCycleKey === initialGameCycleKey && !!saved.gamePlayed : !!saved.gamePlayed || Object.keys(saved.challenges || {}).length > 0,
@@ -80,7 +60,7 @@ export const state = {
   placing: false,
 };
 
-const snapshot = () => JSON.stringify(CLOUD ? { cart: state.cart } : { menu: [...state.menu.map(x => ({ ...x, business: 'food' })), ...state.drinksMenu.map(x => ({ ...x, business: 'drinks' }))], drinksSeeded: true, drinksLaunchAt: state.drinksLaunchAt, orders: state.orders, cart: state.cart, profile: state.profile, challenges: state.challenges, gamePlayed: state.gamePlayed, gameCycleKey: localGameCycleKey(), gameConfig: state.gameConfig, shifts: shiftConfig() });
+const snapshot = () => JSON.stringify(CLOUD ? { cart: state.cart } : { menu: state.menu.map(x => ({ ...x, business: 'food' })), orders: state.orders, cart: state.cart, profile: state.profile, challenges: state.challenges, gamePlayed: state.gamePlayed, gameCycleKey: localGameCycleKey(), gameConfig: state.gameConfig, shifts: shiftConfig() });
 let persistTimer = 0;
 export function persist() {
   clearTimeout(persistTimer);
@@ -93,7 +73,7 @@ export function persist() {
 window.addEventListener('pagehide', () => { clearTimeout(persistTimer); try { localStorage.setItem(KEY, snapshot()); } catch {} });
 
 export const money = n => '₹' + Number(n || 0).toFixed(0);
-export const findMenuItem = id => [...state.menu, ...state.drinksMenu].find(x => x.id === id);
+export const findMenuItem = id => state.menu.find(x => x.id === id);
 export const cartEntries = () => Object.entries(state.cart).map(([id, qty]) => ({ item: findMenuItem(id), qty })).filter(x => x.item && x.qty > 0);
 export const cartCount = () => cartEntries().reduce((a, x) => a + x.qty, 0);
 export const subtotal = () => cartEntries().reduce((a, x) => a + x.item.price * x.qty, 0);
@@ -177,10 +157,10 @@ export function saveItem(id, patch) {
 }
 export function addItem(data) {
   const m = { id: 'custom-' + uid(), available: false, business: state.business || 'food', ...data };
-  (m.business === 'drinks' ? state.drinksMenu : state.menu).push(m); persist(); return m;
+  state.menu.push({ ...m, business: 'food' }); persist(); return m;
 }
 export function removeItem(id) {
-  state.menu = state.menu.filter(x => x.id !== id); state.drinksMenu = state.drinksMenu.filter(x => x.id !== id); delete state.cart[id]; persist();
+  state.menu = state.menu.filter(x => x.id !== id); delete state.cart[id]; persist();
 }
 export function syncGameCycle() {
   const key = localGameCycleKey();

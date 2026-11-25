@@ -25,22 +25,13 @@ export async function loadProfile() {
 }
 
 /* ---- reading ---- */
-const DRINK_IMAGES = {
-  'jeera water': 'jeera-water.jpg',
-  'hot chocolate': 'hot-chocolate.jpg',
-  'black salt lemonade': 'black-salt-lemonade.jpg',
-  'sugar lemonade': 'sugar-lemonade.jpg',
-  'oreo shake': 'oreo-shake.jpg',
-  'banana shake': 'banana-shake.jpg',
-  'cold coffee': 'cold-coffee.jpg',
-};
-const mapItem = m => ({ id: m.id, name: m.name, desc: m.description, price: Number(m.price), available: m.is_available, stock: m.stock, image: m.image || (m.business === 'drinks' ? DRINK_IMAGES[String(m.name || '').trim().toLowerCase()] || null : null) });
+const mapItem = m => ({ id: m.id, name: m.name, desc: m.description, price: Number(m.price), available: m.is_available, stock: m.stock, image: m.image });
 const mapOrder = (o, otps = {}) => {
   const business = o.business || 'food';
   return {
   id: o.code, uuid: o.id, key: o.idempotency_key, business, createdAt: Date.parse(o.created_at),
   deliveryOtp: otps[o.id],
-  shift: business === 'drinks' ? null : (o.shift ? { id: o.shift, label: 'Shift ' + o.shift, delivery: SHIFTS.find(s => s.id === o.shift)?.del || '' } : null),
+  shift: o.shift ? { id: o.shift, label: 'Shift ' + o.shift, delivery: SHIFTS.find(s => s.id === o.shift)?.del || '' } : null,
   customer: { name: o.customer_name, phone: o.phone, block: o.block, floor: String(o.floor), room: o.room },
   items: (o.order_items || []).map(i => ({ id: i.menu_item_id, name: i.item_name, qty: i.quantity, price: Number(i.unit_price) })),
   subtotal: Number(o.subtotal), discount: Number(o.discount), total: Number(o.total), status: o.status, agent: o.agent,
@@ -49,7 +40,7 @@ const mapOrder = (o, otps = {}) => {
 /** Loads menu, shift times and orders into `state`. Returns a signature so callers can tell if anything changed. */
 export async function refreshData() {
   fail(await sb.rpc('sync_daily_stock'));
-  const [menu, shifts, orders, booking, otpResult, gameConfigResult, gameRewardResult, drinksConfig] = await Promise.all([
+  const [menu, shifts, orders, booking, otpResult, gameConfigResult, gameRewardResult] = await Promise.all([
     sb.from('menu_items').select('*').order('created_at').order('name'),
     sb.from('shift_config').select('*').order('id'),
     sb.from('orders').select('*, order_items(*)').order('created_at', { ascending: false }).limit(300),
@@ -57,8 +48,6 @@ export async function refreshData() {
     state.role === 'student' ? sb.rpc('get_my_delivery_otps') : Promise.resolve({ data: [], error: null }),
     sb.rpc('get_game_config'),
     state.role === 'student' ? sb.rpc('get_my_game_reward') : Promise.resolve({ data: null, error: null }),
-    // Drinks is optional on older databases; a missing RPC must not block food.
-    sb.rpc('get_drinks_config').then(r => r.error ? { data: null, error: null } : r),
   ]);
   const info = fail(booking);
   setServerClock(Date.parse(info.server_now) - Date.now());
@@ -66,18 +55,13 @@ export async function refreshData() {
   fail(shifts);
   const menuItems = fail(menu).map(m => ({ ...mapItem(m), business: m.business || 'food' }));
   state.menu = menuItems.filter(item => item.business === 'food');
-  state.drinksMenu = menuItems.filter(item => item.business === 'drinks');
-  const dc = fail(drinksConfig);
-  state.drinksConfig = dc ? { enabled: !!dc.enabled, nextOpenAt: dc.next_open_at || null } : { enabled: false, nextOpenAt: null };
-  state.drinksLaunchAt = state.drinksConfig.enabled ? null : state.drinksConfig.nextOpenAt;
   const otpMap = Object.fromEntries(fail(otpResult).map(x => [x.order_id, x.otp]));
-  state.orders = fail(orders).map(o => mapOrder(o, otpMap)).filter(o => state.role === 'student' || o.business === state.business);
+  state.orders = fail(orders).map(o => mapOrder(o, otpMap)).filter(o => (o.business || 'food') === 'food');
   state.gameConfig = fail(gameConfigResult);
   state.gamePlayed = !!state.gameConfig.played;
   const reward = fail(gameRewardResult);
   state.pendingGameReward = reward ? { id: reward.id, hit: reward.hit, bullseye: reward.bullseye, accuracy: Number(reward.accuracy), arrows: reward.arrows, arrowRewards: Array.isArray(reward.arrow_rewards) ? reward.arrow_rewards.map(Number) : [], minDiscount: Number(reward.min_discount), maxDiscount: Number(reward.max_discount), discount: Number(reward.discount) } : null;
-  // Include both menus so student sessions redraw immediately after Admin changes juice items.
-  return JSON.stringify([state.menu, state.drinksMenu, state.drinksConfig, state.orders, state.gameConfig, state.pendingGameReward, SHIFTS.map(s => s.book + s.del)]);
+  return JSON.stringify([state.menu, state.orders, state.gameConfig, state.pendingGameReward, SHIFTS.map(s => s.book + s.del)]);
 }
 
 /* ---- ordering ---- */
@@ -132,10 +116,6 @@ export async function setTodayMeal(id) { fail(await sb.rpc('set_today_meal', { p
 export async function patchItem(id, patch) {
   const update = Object.hasOwn(patch, 'stock') ? { ...patch, daily_stock_limit: patch.stock } : patch;
   fail(await sb.from('menu_items').update(update).eq('id', id).eq('business', state.business || 'food'));
-}
-export async function setDrinkAvailability(id, available) { fail(await sb.from('menu_items').update({ is_available: available }).eq('id', id).eq('business', 'drinks')); }
-export async function saveDrinksConfig({ enabled, nextOpenAt }) {
-  return fail(await sb.rpc('save_drinks_config', { p_enabled: !!enabled, p_next_open_at: nextOpenAt || null }));
 }
 export async function saveShifts(list) {
   const x = list[0];

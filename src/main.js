@@ -9,17 +9,16 @@ import * as cloud from './cloud.js';
 import { staffUnlocked, staffLock, staffLogin } from './staff.js';
 
 const app = document.querySelector('#app');
-/** Student, food staff, and drinks staff each use distinct portal paths. */
+/** Juice is paused; only the food portals remain active. */
 const PORTAL_OVERRIDE = import.meta.env.VITE_NATIVE_PORTAL || '';
-const PORTAL = ['admin', 'delivery', 'drinks-admin', 'drinks-delivery'].includes(window.ANNAM_PORTAL) ? window.ANNAM_PORTAL
+const PORTAL = ['admin', 'delivery'].includes(window.ANNAM_PORTAL) ? window.ANNAM_PORTAL
   : ['admin', 'delivery'].includes(PORTAL_OVERRIDE) ? PORTAL_OVERRIDE : 'student';
-const PORTAL_ROLE = PORTAL === 'drinks-admin' ? 'admin' : PORTAL === 'drinks-delivery' ? 'delivery' : PORTAL;
-const BUSINESS = PORTAL.startsWith('drinks-') ? 'drinks' : 'food';
+const PORTAL_ROLE = PORTAL;
+const BUSINESS = 'food';
 const ROOT = PORTAL === 'student' ? './' : '../';
 // Staff endpoints:  /1121/ (delivery)   /A1121/ (admin)
-const PORTAL_URL = { student: ROOT, admin: ROOT + 'A1121/', delivery: ROOT + '1121/', 'drinks-admin': ROOT + 'A1026/', 'drinks-delivery': ROOT + '1026/' };
+const PORTAL_URL = { student: ROOT, admin: ROOT + 'A1121/', delivery: ROOT + '1121/' };
 const IMG_BASE = ROOT + 'images/foods/';
-const DRINK_IMG_BASE = ROOT + 'images/drinks/';
 const money2 = n => '₹' + Number(n || 0).toFixed(2);
 const esc = (s = '') => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -34,14 +33,13 @@ const ico = n => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="curre
 
 /* ---------------- navigation ---------------- */
 const NAV = {
-  student: [['menu', 'Food', 'menu'], ['drinks', 'Fresh juice', 'menu'], ['orders', 'My orders', 'orders']],
+  student: [['menu', 'Food', 'menu'], ['orders', 'My orders', 'orders']],
   admin: [['overview', 'Dashboard', 'grid'], ['orders', 'Orders', 'orders'], ['menu-admin', 'Menu', 'menu'], ['shifts-admin', 'Shifts', 'clock'], ['game-admin', 'Game', 'bolt']],
-  'drinks-admin': [['overview', 'Dashboard', 'grid'], ['orders', 'Orders', 'orders'], ['menu-admin', 'Fresh juice', 'menu'], ['drinks-settings', 'Juice access', 'clock'], ['game-admin', 'Game', 'bolt']],
   delivery: [['active-deliveries', 'Active', 'bike'], ['delivery-history', 'Completed', 'clock']],
 };
 const navItems = () => NAV[PORTAL] || NAV[state.role];
 // The Student/Admin/Delivery preview switch exists only for local demo use (npm run dev, or add ?demo to the address). Students never see it.
-const HOME = { student: 'menu', admin: 'overview', delivery: 'active-deliveries', 'drinks-admin': 'overview', 'drinks-delivery': 'active-deliveries' };
+const HOME = { student: 'menu', admin: 'overview', delivery: 'active-deliveries' };
 state.business = BUSINESS;
 state.role = PORTAL_ROLE; state.page = HOME[PORTAL];   // each endpoint is locked to its own portal
 
@@ -59,14 +57,14 @@ function mobileNav() {
 }
 function pageHead(title, sub = '', right = '') { return `<div class="page-head"><div><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div>${right}</div>`; }
 const empty = msg => `<div class="empty-state">${msg}</div>`;
-const activeMenu = () => state.business === 'drinks' ? state.drinksMenu : state.menu;
+const activeMenu = () => state.menu;
 const activeOrders = () => state.orders.filter(o => (o.business || 'food') === state.business);
 
 /* ---------------- student ---------------- */
-const imgSrc = (im, business = 'food') => (/^(data:|https?:|blob:)/.test(im) ? im : (business === 'drinks' ? DRINK_IMG_BASE : IMG_BASE) + im);
+const imgSrc = im => (/^(data:|https?:|blob:)/.test(im) ? im : IMG_BASE + im);
 function photo(item) {
   return item.image
-    ? `<img src="${esc(imgSrc(item.image, item.business))}" alt="${esc(item.name)}" decoding="async" fetchpriority="high">`
+    ? `<img src="${esc(imgSrc(item.image))}" alt="${esc(item.name)}" decoding="async" fetchpriority="high">`
     : `<span class="ph">${esc(item.name[0])}</span>`;
 }
 const todayItem = () => state.menu.find(item => item.available);
@@ -88,12 +86,6 @@ function orderBox(item) {
 let lastShiftKey = shiftState().key;
 setInterval(() => {
   if (!CLOUD && syncGameCycle()) { lastShiftKey = shiftState().key; if (state.page === 'menu') refreshCart(); else render(); }
-  const drinkCounter = document.getElementById('drinks-counter');
-  if (drinkCounter && state.drinksLaunchAt) {
-    const remaining = Math.max(0, Math.ceil((new Date(state.drinksLaunchAt).getTime() - Date.now()) / 1000));
-    drinkCounter.textContent = hms(remaining);
-    if (!remaining) render();
-  }
   const el = document.getElementById('counter'); if (!el) return;
   const st = shiftState();
   if (st.key !== lastShiftKey) { lastShiftKey = st.key; refreshCart(); return; }
@@ -108,15 +100,6 @@ function menuPage() {
   return `<section class="today"><div class="today-art"><div class="arch"><div class="arch-in">${photo(item)}</div></div></div>
   <div class="today-body"><p class="eyebrow"><span>Today’s meal · ${day}</span></p><h1>${esc(item.name)}</h1><p class="desc">${esc(item.desc)}</p><div class="orn" aria-hidden="true"><i></i></div>
   <div id="order-box">${item.stock != null && item.stock <= 5 ? `<div class="stock-warning" role="status">ONLY ${item.stock} LEFT</div>` : ''}${orderBox(item)}</div></div></section>`;
-}
-function drinksPage() {
-  const config = state.drinksConfig || { enabled: false, nextOpenAt: state.drinksLaunchAt };
-  const launchAt = config.nextOpenAt ? new Date(config.nextOpenAt).getTime() : Date.now() + 37 * 3600 * 1000;
-  const remaining = config.enabled ? 0 : Math.max(0, Math.ceil((launchAt - Date.now()) / 1000));
-  if (remaining) return `<section class="today drinks-coming-soon"><div class="today-body"><p class="eyebrow"><span>Fresh juice</span></p><h1>Fresh juice will be available soon.</h1><p class="desc">We’re getting everything ready for you.</p><div class="drinks-countdown"><span>Available in</span><strong id="drinks-counter">${hms(remaining)}</strong></div></div></section>`;
-  const items = state.drinksMenu.filter(item => item.available && (item.stock == null || item.stock > 0));
-  const gamePromo = state.gameConfig.enabled && !state.gamePlayed ? `<p class="game-promo-note">Play the game for a chance to get up to ${money(state.gameConfig.maxDiscount)} off!</p>` : '';
-  return `<section class="today drinks-menu"><div class="today-body"><p class="eyebrow"><span>Fresh juice · Today</span></p><h1>Fresh juice</h1><p class="desc">Freshly prepared juice, delivered to your room.</p>${items.length ? `<div class="drinks-grid">${items.map(item => `<article class="drink-card"><div class="drink-photo">${photo(item)}</div><div class="drink-card-info"><h2>${esc(item.name)}</h2><p>${esc(item.desc || '')}</p><div class="drink-card-foot"><strong>${money(item.price)}</strong><div class="qty-control"><button data-action="qty" data-id="${esc(item.id)}" data-delta="-1" aria-label="One less" ${!state.cart[item.id] ? 'disabled' : ''}>−</button><span>${state.cart[item.id] || 0}</span><button data-action="qty" data-id="${esc(item.id)}" data-delta="1" aria-label="One more" ${state.cart[item.id] >= maxQty(item) ? 'disabled' : ''}>+</button></div></div></div></article>`).join('')}</div><button class="primary-btn full big drinks-reserve" data-action="checkout" ${cartCount() ? '' : 'disabled'}>Book juice${cartCount() ? ` · ${cartCount()} item${cartCount() === 1 ? '' : 's'}` : ''}</button>${gamePromo}` : empty('We’re updating today’s fresh juice menu. Please check back soon.')}</div></section>`;
 }
 function orderCard(o, allowCancel = false) {
   return `<div class="order-card"><div class="order-head"><span class="order-id">Ref. ${esc(o.id)}</span><span class="status ${statusClass(o.status)}">${esc(o.status)}</span></div>
@@ -134,7 +117,7 @@ function tracker(o) {
 }
 function studentOrders() {
   const mine = CLOUD ? state.orders : state.orders.filter(o => !state.profile.phone || o.customer.phone === state.profile.phone);
-  return `<div class="wrap">${pageHead('My orders', 'Your meals and fresh juice, from our kitchen to your door.')}${mine.length ? mine.map(o => orderCard(o, true).replace(/<\/div>$/, tracker(o) + '</div>')).join('') : empty('Your reservations will appear here.')}</div>`;
+  return `<div class="wrap">${pageHead('My orders', 'Your meals, from our kitchen to your door.')}${mine.length ? mine.map(o => orderCard(o, true).replace(/<\/div>$/, tracker(o) + '</div>')).join('') : empty('Your reservations will appear here.')}</div>`;
 }
 function fields(p) {
   return `<div class="field full-width"><label>Full name</label><input name="name" value="${esc(p.name)}" placeholder="Your name" autocomplete="name" required></div>
@@ -154,7 +137,7 @@ function adminOverview() {
   const tally = {}; live.forEach(o => o.items.forEach(i => tally[i.name] = (tally[i.name] || 0) + i.qty));
   const top = Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 5), topMax = top[0]?.[1] || 1;
   const blocks = ['A', 'B'].map(b => [b, live.filter(o => o.customer.block === b).length]);
-  return `${pageHead(state.business === 'drinks' ? 'Drinks dashboard' : 'Dashboard', state.business === 'drinks' ? 'Today’s drinks operations' : 'Today’s hostel food operations')}
+  return `${pageHead('Dashboard', 'Today’s hostel food operations')}
   <div class="stat-grid">${[['Total orders', live.length], ['Active', active.length], ['Delivered', done.length], ['Delivered revenue', money(revenue)], ['Avg. order', money(avg)]].map(([l, v]) => `<div class="stat"><div class="label">${l}</div><div class="value">${v}</div></div>`).join('')}</div>
   <div class="two-col"><div class="panel"><h3>Top items</h3>${top.length ? top.map(([n, q]) => `<div class="bar-row"><span>${esc(n)}</span><div class="bar"><i style="width:${q / topMax * 100}%"></i></div><b>${q}</b></div>`).join('') : '<p class="muted small">No sales yet.</p>'}</div>
   <div class="panel"><h3>Orders by block</h3>${blocks.map(([b, n]) => `<div class="bar-row"><span>Block ${b}</span><div class="bar"><i style="width:${live.length ? n / live.length * 100 : 0}%"></i></div><b>${n}</b></div>`).join('')}</div></div>
@@ -165,7 +148,7 @@ let adminFilter = 'all';
 function adminOrders() {
   const list = activeOrders().filter(o => adminFilter === 'all' || (adminFilter === 'active' ? !['Delivered', 'Cancelled'].includes(o.status) : o.status === 'Delivered'));
   const tabs = [['all', 'All'], ['active', 'Active'], ['done', 'Delivered']];
-  return `${pageHead(state.business === 'drinks' ? 'Drinks orders' : 'Orders', 'Update status and assign delivery agents')}
+  return `${pageHead('Orders', 'Update status and assign delivery agents')}
   <div class="tabs">${tabs.map(([v, t]) => `<button class="tab ${adminFilter === v ? 'active' : ''}" data-action="admin-filter" data-filter="${v}">${t}</button>`).join('')}</div>
   ${list.length ? `<div class="table-wrap"><table class="data-table"><thead><tr><th>Order</th><th>Student</th><th>Location</th><th>Items</th><th>Total</th><th>Status</th><th>Agent</th></tr></thead><tbody>${list.map(o => `<tr>
     <td><strong>${esc(o.id)}</strong><br><span class="muted">${new Date(o.createdAt).toLocaleTimeString()}</span></td>
@@ -177,9 +160,9 @@ function adminOrders() {
     <td><select class="select-small" data-agent="${o.id}">${AGENTS.map(a => `<option ${o.agent === a ? 'selected' : ''}>${a}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>` : empty('No orders to show.')}`;
 }
 function adminMenu() {
-  const items = activeMenu(), itemLabel = state.business === 'drinks' ? 'drink' : 'food item';
-  return `${pageHead(state.business === 'drinks' ? 'Drinks menu' : 'Menu', state.business === 'drinks' ? 'Add and manage today’s drink options' : 'Edit photos, prices, stock — and choose the one meal served today', `<button class="primary-btn" data-action="add-food">+ Add ${itemLabel}</button>`)}
-  <div class="table-wrap"><table class="data-table menu-table"><thead><tr><th>${state.business === 'drinks' ? 'Drink' : 'Dish'}</th><th>Price</th><th>Stock</th><th>Available today</th><th></th></tr></thead><tbody>${items.map(item => `<tr>
+  const items = activeMenu(), itemLabel = 'food item';
+  return `${pageHead('Menu', 'Edit photos, prices, stock — and choose the one meal served today', `<button class="primary-btn" data-action="add-food">+ Add ${itemLabel}</button>`)}
+  <div class="table-wrap"><table class="data-table menu-table"><thead><tr><th>Dish</th><th>Price</th><th>Stock</th><th>Available today</th><th></th></tr></thead><tbody>${items.map(item => `<tr>
     <td><div class="dish-cell"><button class="thumb thumb-btn" data-action="edit-food" data-id="${item.id}" aria-label="Change photo of ${esc(item.name)}" title="Change photo">${photo(item)}<span class="thumb-cam">${ico('image')}</span></button><div><strong>${esc(item.name)}</strong><br><span class="muted">${esc(item.desc)}</span></div></div></td>
     <td data-label="Price"><label class="inline-input">₹<input aria-label="Price for ${esc(item.name)}" type="number" min="1" value="${item.price}" data-price="${item.id}"></label></td>
     <td data-label="Stock"><input class="stock-input" aria-label="Stock for ${esc(item.name)}" type="number" min="0" placeholder="∞" value="${item.stock ?? ''}" data-stock="${item.id}"></td>
@@ -206,16 +189,6 @@ function adminGame() {
   </div><button class="primary-btn" type="submit">Save game settings</button></form>
   <div class="game-actions-only"><button class="secondary-btn" type="button" data-action="trial-game">Play a trial game</button>
   <button class="secondary-btn" type="button" data-action="replay-all-students">Replay for all played students</button></div>`;
-}
-function drinksSettings() {
-  const c = state.drinksConfig || { enabled: false, nextOpenAt: null };
-  const localTime = c.nextOpenAt ? new Date(c.nextOpenAt).toISOString().slice(0, 16) : '';
-  return `${pageHead('Fresh juice access', 'Choose when the fresh juice section is available to students.')}
-  <form id="drinks-settings-form" class="game-settings-inline"><h2>Juice availability</h2><div class="game-settings-fields">
-    <label class="game-toggle"><input name="enabled" type="checkbox" ${c.enabled ? 'checked' : ''}> Show fresh juice now</label>
-    <div class="field"><label>Next opening time</label><input name="nextOpenAt" type="datetime-local" value="${localTime}"></div>
-  </div><button class="primary-btn" type="submit">Save juice access</button></form>
-  <p class="footer-note">When access is off, students see the centered opening countdown. Fresh juice has no food booking shifts.</p>`;
 }
 
 /* photo upload: resized in the browser so it stays small and sharp */
@@ -263,7 +236,7 @@ function deliveryPage() {
   const orders = activeOrders();
   if (state.page === 'delivery-history') {
     const done = orders.filter(o => o.status === 'Delivered');
-    return `${pageHead(state.business === 'drinks' ? 'Drinks completed' : 'Completed', 'Recently delivered orders')}${done.length ? done.map(o => deliveryCard(o)).join('') : empty('Completed deliveries will appear here.')}`;
+    return `${pageHead('Completed', 'Recently delivered orders')}${done.length ? done.map(o => deliveryCard(o)).join('') : empty('Completed deliveries will appear here.')}`;
   }
   const active = orders.filter(o => !['Delivered', 'Cancelled'].includes(o.status));
   const floorN = o => Number(o.customer.floor) || floorOf(o.customer.room);
@@ -272,20 +245,19 @@ function deliveryPage() {
     ? list.sort((x, y) => roomNum(y.customer.room) - roomNum(x.customer.room)).map(o => deliveryCard(o, true)).join('')   // rooms: highest first
     : '<div class="none">No orders</div>'}</div>`;
   const sections = floors.map(f => { const here = active.filter(o => floorN(o) === f); return `<section class="floor-group"><div class="floor-head"><h3>Floor ${f}</h3><span>${here.length} ${here.length === 1 ? 'order' : 'orders'}</span></div><div class="block-cols">${['A', 'B'].map(b => col(b, here.filter(o => o.customer.block === b))).join('')}</div></section>`; }).join('');
-  return `${pageHead(state.business === 'drinks' ? 'Drinks deliveries' : 'Deliveries', 'Top floor first · Block A and B · highest room first')}${sections || empty('No active deliveries right now.')}`;
+  return `${pageHead('Deliveries', 'Top floor first · Block A and B · highest room first')}${sections || empty('No active deliveries right now.')}`;
 }
 
 /* ---------------- shell ---------------- */
 function pageContent() {
-  if (state.role === 'student') return state.page === 'orders' ? studentOrders() : state.page === 'drinks' ? drinksPage() : state.page === 'profile' ? profilePage() : menuPage();
-  if (state.role === 'admin') return state.page === 'orders' ? adminOrders() : state.page === 'menu-admin' ? adminMenu() : state.page === 'shifts-admin' ? adminShifts() : state.page === 'drinks-settings' ? drinksSettings() : state.page === 'game-admin' ? adminGame() : adminOverview();
+  if (state.role === 'student') return state.page === 'orders' ? studentOrders() : state.page === 'profile' ? profilePage() : menuPage();
+  if (state.role === 'admin') return state.page === 'orders' ? adminOrders() : state.page === 'menu-admin' ? adminMenu() : state.page === 'shifts-admin' ? adminShifts() : state.page === 'game-admin' ? adminGame() : adminOverview();
   return deliveryPage();
 }
 function render() {
   const hero = '';
-  const juiceStyle = state.business === 'drinks' ? '<style>.drinks-coming-soon .today-body,.drinks-menu .today-body{align-items:center!important;text-align:center!important}.drinks-coming-soon .today-body h1,.drinks-menu .today-body h1{font-size:clamp(36px,4.2vw,56px)!important;line-height:1.08!important}.drinks-coming-soon .desc,.drinks-menu .desc{text-align:center!important}</style>' : '';
   const updateBanner = state.role === 'student' ? '<div class="portal-update-banner" role="status"><span>The admin portal is currently being updated · Your order will still be delivered directly to your room</span></div>' : '';
-  app.innerHTML = `${juiceStyle}<div class="app-shell role-${state.role}${hero}">${updateBanner}${header()}<main class="page" id="page">${pageContent()}</main>${mobileNav()}</div>`;
+  app.innerHTML = `<div class="app-shell role-${state.role}${hero}">${updateBanner}${header()}<main class="page" id="page">${pageContent()}</main>${mobileNav()}</div>`;
   window.scrollTo(0, 0);
 }
 function refreshCart() {
@@ -374,12 +346,12 @@ function launchTrialGame() {
 }
 function reviewModal() {
   const total = subtotal(), discount = discountNow();
-  const drinks = state.business === 'drinks', actionLabel = drinks ? 'Confirm booking' : 'Confirm reservation';
-  openModal(`${modalHead(drinks ? 'Your juice booking' : 'Your reservation')}<div class="review-lines">${cartEntries().map(({ item, qty }) => `<div class="cart-row"><strong>${qty} × ${esc(item.name)}</strong><b>${money(qty * item.price)}</b></div>`).join('')}</div>
+  const actionLabel = 'Confirm reservation';
+  openModal(`${modalHead('Your reservation')}<div class="review-lines">${cartEntries().map(({ item, qty }) => `<div class="cart-row"><strong>${qty} × ${esc(item.name)}</strong><b>${money(qty * item.price)}</b></div>`).join('')}</div>
   <div class="summary-line"><span>Subtotal</span><strong>${money(total)}</strong></div>
   <div class="summary-line"><span>Discount</span><strong class="accent">−${money(discount)}</strong></div>
   <div class="summary-line total"><span>Total</span><strong>${money(total - discount)}</strong></div>
-  <button class="primary-btn full" id="place-order" data-action="place-order" data-label="${actionLabel} · ${money(total - discount)}">${actionLabel} · ${money(total - discount)}</button>${drinks ? '' : '<p class="footer-note">Payment is settled directly with the hostel kitchen.</p>'}`, 'review');
+  <button class="primary-btn full" id="place-order" data-action="place-order" data-label="${actionLabel} · ${money(total - discount)}">${actionLabel} · ${money(total - discount)}</button><p class="footer-note">Payment is settled directly with the hostel kitchen.</p>`, 'review');
 }
 async function submitOrder(btn) {
   if (state.placing) return;
@@ -404,7 +376,7 @@ function changeQty(id, d) {
   const item = findMenuItem(id); if (!item) return;
   const next = Math.min(maxQty(item), Math.max(0, (state.cart[id] || 0) + d));
   if (next) state.cart = { ...state.cart, [id]: next }; else { const cart = { ...state.cart }; delete cart[id]; state.cart = cart; }
-  persist(); if (state.page === 'drinks') render(); else refreshCart();
+  persist(); refreshCart();
 }
 /** Runs a server action, then reloads data and redraws. Errors are shown and the screen is re-synced from the server. */
 async function run(fn, okMsg) {
@@ -417,14 +389,13 @@ document.addEventListener('click', async e => {
   switch (b.dataset.action) {
     case 'nav': {
       const page = b.dataset.page;
-      const nextBusiness = page === 'drinks' ? 'drinks' : page === 'menu' ? 'food' : state.business;
-      if (nextBusiness !== state.business) { state.cart = {}; state.business = nextBusiness; }
+      state.business = 'food';
       state.page = page; state.query = ''; render(); break;
     }
     case 'student-orders-filter': state.ordersTab = b.dataset.filter; render(); break;
     case 'qty': changeQty(id, Number(b.dataset.delta)); break;
     case 'close-modal': closeModal(); break;
-    case 'checkout': if (state.business !== 'drinks' && !bookingShift()) { showToast('Booking is closed right now'); refreshCart(); break; } closeModal(); checkoutModal(); break;
+    case 'checkout': if (!bookingShift()) { showToast('Booking is closed right now'); refreshCart(); break; } closeModal(); checkoutModal(); break;
     case 'skip-game': if (readCheckout()) { state.challengeId = null; state.cloudGame = null; reviewModal(); } break;
     case 'place-order': submitOrder(b); break;
     case 'trial-game': if (PORTAL_ROLE === 'admin') launchTrialGame(); break;
@@ -436,8 +407,8 @@ document.addEventListener('click', async e => {
     case 'toggle-food': {
       const f = activeMenu().find(x => x.id === id); if (!f) break;
       const on = !f.available; state.cart = {};
-      if (CLOUD) { await run(() => state.business === 'drinks' ? cloud.setDrinkAvailability(id, on) : cloud.setTodayMeal(on ? id : null), on ? `${f.name} is available today` : `${f.name} is unavailable`); break; }
-      if (state.business === 'food') state.menu.forEach(x => x.available = false);
+      if (CLOUD) { await run(() => cloud.setTodayMeal(on ? id : null), on ? `${f.name} is available today` : `${f.name} is unavailable`); break; }
+      state.menu.forEach(x => x.available = false);
       f.available = on; persist(); render(); showToast(on ? `${f.name} is available today` : `${f.name} is unavailable`); break;
     }
     case 'admin-filter': adminFilter = b.dataset.filter; render(); break;
@@ -488,14 +459,6 @@ document.addEventListener('submit', e => {
     if (CLOUD) { run(() => cloud.saveGameConfig(config), 'Game settings saved'); return; }
     state.gameConfig = config; persist(); render(); showToast('Game settings saved');
   }
-  else if (f.id === 'drinks-settings-form') {
-    const enabled = f.elements.enabled.checked;
-    const nextOpenAt = d.nextOpenAt ? new Date(d.nextOpenAt).toISOString() : null;
-    if (!enabled && !nextOpenAt) { showToast('Choose the next opening time'); return; }
-    const config = { enabled, nextOpenAt };
-    if (CLOUD) { run(() => cloud.saveDrinksConfig(config), 'Fresh juice access saved'); return; }
-    state.drinksConfig = config; state.drinksLaunchAt = enabled ? null : nextOpenAt; persist(); render(); showToast('Fresh juice access saved');
-  }
   else if (f.id === 'game-replay-form') {
     if (!CLOUD) { showToast('Student game access requires the connected portal.'); return; }
     run(() => cloud.grantGameReplay(d.phone), 'Another game chance is available for that student');
@@ -515,7 +478,7 @@ function studentStartupError(message) {
 function authScreen() {
   const staff = PORTAL !== 'student', su = !staff && authMode === 'signup';
   app.innerHTML = `<div class="auth"><div class="auth-card">${brand()}
-    <h1>${su ? 'Create your account' : staff ? (PORTAL_ROLE === 'admin' ? `${BUSINESS === 'drinks' ? 'Drinks admin' : 'Admin'} sign in` : `${BUSINESS === 'drinks' ? 'Drinks delivery' : 'Delivery'} sign in`) : 'Welcome'}</h1><p class="auth-sub">${su ? 'A few details so we can bring your meal to the right door.' : staff ? 'Staff only. Enter your email and password.' : 'Please sign in to reserve today’s meal.'}</p>
+    <h1>${su ? 'Create your account' : staff ? (PORTAL_ROLE === 'admin' ? 'Admin sign in' : 'Delivery sign in') : 'Welcome'}</h1><p class="auth-sub">${su ? 'A few details so we can bring your meal to the right door.' : staff ? 'Staff only. Enter your email and password.' : 'Please sign in to reserve today’s meal.'}</p>
     <form id="auth-form" class="form-grid">
       ${su ? `<div class="field full-width"><label>Full name</label><input name="name" autocomplete="name" required></div>
       <div class="field full-width"><label>Mobile number</label><input name="phone" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="10-digit mobile number" autocomplete="tel" required></div>
@@ -542,7 +505,7 @@ async function doAuth(d, btn) {
 async function enterApp() {
   const p = await cloud.loadProfile(); if (!p) { authScreen(); return; }
   if (p.role !== PORTAL_ROLE || (PORTAL_ROLE !== 'student' && !['both', BUSINESS].includes(p.business || 'food'))) {   // wrong door: keep staff access limited to its assigned service
-    const home = p.role === 'admin' || p.role === 'delivery' ? PORTAL_URL[p.business === 'drinks' ? `${p.business}-${p.role}` : p.role] : PORTAL_URL.student;
+    const home = p.role === 'admin' || p.role === 'delivery' ? PORTAL_URL[p.role] : PORTAL_URL.student;
     app.innerHTML = `<div class="auth"><div class="auth-card">${brand()}<h1>Wrong portal</h1><p class="auth-sub">This account is a ${esc(p.role)} account and can't open the ${PORTAL} portal.</p><a class="primary-btn full big" href="${home}" style="text-align:center;display:block;text-decoration:none">Go to the ${esc(p.role)} portal</a><button class="secondary-btn full" data-action="signout">Sign out</button></div></div>`;
     return;
   }
